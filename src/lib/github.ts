@@ -51,11 +51,30 @@ export async function createTreeAndCommit(
     });
     baseTreeSha = latestCommit.tree.sha;
   } catch (err: any) {
-    // Repo is empty (409) or branch doesn't exist (404) — create initial commit
+    // Repo is empty (409) or branch doesn't exist (404) — seed it first
     if (err.status !== 409 && err.status !== 404) {
       throw err;
     }
-    latestCommitSha = null;
+
+    // GitHub's low-level git API (blobs/trees) doesn't work on truly empty repos.
+    // Create an initial README so the repo has a commit + branch.
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path: "README.md",
+      message: "Initial commit",
+      content: Buffer.from(`# ${repo}\n\nFramerClone export`).toString("base64"),
+      branch,
+    });
+
+    // Now fetch the commit we just created
+    latestCommitSha = await getLatestCommit(octokit, owner, repo, branch);
+    const { data: latestCommit } = await octokit.rest.git.getCommit({
+      owner,
+      repo,
+      commit_sha: latestCommitSha,
+    });
+    baseTreeSha = latestCommit.tree.sha;
   }
 
   const treeEntries = await Promise.all(
@@ -90,22 +109,12 @@ export async function createTreeAndCommit(
     parents: latestCommitSha ? [latestCommitSha] : [],
   });
 
-  if (latestCommitSha) {
-    await octokit.rest.git.updateRef({
-      owner,
-      repo,
-      ref: `heads/${branch}`,
-      sha: commit.sha,
-    });
-  } else {
-    // Create the branch ref for an empty repo
-    await octokit.rest.git.createRef({
-      owner,
-      repo,
-      ref: `refs/heads/${branch}`,
-      sha: commit.sha,
-    });
-  }
+  await octokit.rest.git.updateRef({
+    owner,
+    repo,
+    ref: `heads/${branch}`,
+    sha: commit.sha,
+  });
 
   return commit.sha;
 }
