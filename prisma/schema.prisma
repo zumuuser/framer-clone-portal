@@ -23,6 +23,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -35,8 +36,9 @@ model Session {
 
 model User {
   id            String    @id @default(cuid())
-  email         String    @unique
   name          String?
+  email         String?   @unique
+  emailVerified DateTime?
   image         String?
   githubId      String?   @unique
   githubToken   String?
@@ -66,6 +68,14 @@ model Project {
   syncLogs        SyncLog[]
 
   @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 model SyncLog {
