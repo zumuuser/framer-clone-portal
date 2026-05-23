@@ -39,13 +39,24 @@ export async function createTreeAndCommit(
   files: { path: string; content: Buffer }[],
   message: string
 ) {
-  const latestCommitSha = await getLatestCommit(octokit, owner, repo, branch);
+  let latestCommitSha: string | null = null;
+  let baseTreeSha: string | undefined;
 
-  const { data: latestCommit } = await octokit.rest.git.getCommit({
-    owner,
-    repo,
-    commit_sha: latestCommitSha,
-  });
+  try {
+    latestCommitSha = await getLatestCommit(octokit, owner, repo, branch);
+    const { data: latestCommit } = await octokit.rest.git.getCommit({
+      owner,
+      repo,
+      commit_sha: latestCommitSha,
+    });
+    baseTreeSha = latestCommit.tree.sha;
+  } catch (err: any) {
+    // Repo is empty (409) or branch doesn't exist (404) — create initial commit
+    if (err.status !== 409 && err.status !== 404) {
+      throw err;
+    }
+    latestCommitSha = null;
+  }
 
   const treeEntries = await Promise.all(
     files.map(async (file) => {
@@ -67,7 +78,7 @@ export async function createTreeAndCommit(
   const { data: tree } = await octokit.rest.git.createTree({
     owner,
     repo,
-    base_tree: latestCommit.tree.sha,
+    base_tree: baseTreeSha,
     tree: treeEntries,
   });
 
@@ -76,15 +87,25 @@ export async function createTreeAndCommit(
     repo,
     message,
     tree: tree.sha,
-    parents: [latestCommitSha],
+    parents: latestCommitSha ? [latestCommitSha] : [],
   });
 
-  await octokit.rest.git.updateRef({
-    owner,
-    repo,
-    ref: `heads/${branch}`,
-    sha: commit.sha,
-  });
+  if (latestCommitSha) {
+    await octokit.rest.git.updateRef({
+      owner,
+      repo,
+      ref: `heads/${branch}`,
+      sha: commit.sha,
+    });
+  } else {
+    // Create the branch ref for an empty repo
+    await octokit.rest.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${branch}`,
+      sha: commit.sha,
+    });
+  }
 
   return commit.sha;
 }
