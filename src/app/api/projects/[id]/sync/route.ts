@@ -22,6 +22,11 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Concurrency lock: prevent double-sync
+  if (project.status === "syncing") {
+    return NextResponse.json({ error: "Sync already in progress" }, { status: 409 });
+  }
+
   // Create sync log entry
   const syncLog = await prisma.syncLog.create({
     data: {

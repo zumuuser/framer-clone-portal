@@ -12,7 +12,6 @@ export interface ScrapedFile {
 export interface ScrapeResult {
   files: ScrapedFile[];
   contentHash: string;
-  screenshots: { live: Buffer; local: Buffer };
 }
 
 const mimeTypes: Record<string, string> = {
@@ -26,6 +25,7 @@ const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
+  ".webp": "image/webp",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
@@ -44,18 +44,31 @@ function computeHash(files: ScrapedFile[]): string {
 }
 
 function fixSrcset(html: string): string {
-  // Fix malformed srcset: "image.png 512w?query=... 512w" -> "image.png?query=... 512w"
   return html.replace(
     /(\.(?:png|jpg|jpeg|gif|webp)) (\d+w)\?([^\s,]+) \2/g,
     "$1?$3 $2"
   );
 }
 
+function rewriteHtmlAssets(html: string, baseOrigin: string): string {
+  // Rewrite absolute asset URLs to relative paths
+  const assetRe = new RegExp(
+    `(["'(])${baseOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/[^"')\\s]+)`,
+    "g"
+  );
+  return html.replace(assetRe, "$1$2");
+}
+
 async function startLocalServer(siteDir: string, port: number): Promise<ReturnType<typeof createServer>> {
   const server = createServer((req, res) => {
     let rel = decodeURIComponent(req.url || "/").split("?")[0];
     if (rel.endsWith("/")) rel += "index.html";
-    const filePath = join(siteDir, rel);
+    // Try adding .html for clean paths
+    let filePath = join(siteDir, rel);
+    if (!existsSync(filePath) && !extname(filePath)) {
+      const withHtml = filePath + ".html";
+      if (existsSync(withHtml)) filePath = withHtml;
+    }
 
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
       res.writeHead(404);
@@ -76,6 +89,7 @@ async function startLocalServer(siteDir: string, port: number): Promise<ReturnTy
 
 export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
   const url = domain.startsWith("http") ? domain : `https://${domain}`;
+  const baseOrigin = new URL(url).origin;
   const workDir = join(process.cwd(), "tmp", `scrape-${Date.now()}`);
   mkdirSync(workDir, { recursive: true });
 
@@ -88,10 +102,7 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
     await page.goto(url, { waitUntil: "networkidle" });
     await page.waitForTimeout(3000);
 
-    // Capture live screenshot
-    const liveScreenshot = await page.screenshot({ fullPage: true });
-
-    // 2. Discover all pages (look for links to other pages on same domain)
+    // 2. Discover all pages
     const discoveredUrls = new Set<string>();
     discoveredUrls.add(url);
 
@@ -101,7 +112,7 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
         const href = (a as HTMLAnchorElement).href;
         try {
           const u = new URL(href);
-          if (u.hostname === baseDomain && !u.hash) {
+          if (u.hostname === baseDomain && !u.hash && !u.search) {
             hrefs.push(u.pathname);
           }
         } catch {}
@@ -114,25 +125,27 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
     }
 
     // 3. Scrape each page
-    const pageFiles: { path: string; content: Buffer }[] = [];
+    const pageFiles: ScrapedFile[] = [];
     const assetUrls = new Set<string>();
+    const assetPathMap = new Map<string, string>(); // url -> local path
 
     for (const pageUrl of discoveredUrls) {
       await page.goto(pageUrl, { waitUntil: "networkidle" });
       await page.waitForTimeout(2000);
 
       const pathname = new URL(pageUrl).pathname;
-      const fileName = pathname === "/" ? "index.html" : pathname.replace(/^\//, "").replace(/\/$/, ".html") + (pathname.includes(".") ? "" : ".html");
+      const fileName = pathname === "/"
+        ? "index.html"
+        : pathname.replace(/^\//, "").replace(/\/$/, "") + (pathname.includes(".") ? "" : ".html");
       const htmlPath = join(workDir, fileName);
       mkdirSync(dirname(htmlPath), { recursive: true });
 
       let html = await page.content();
       html = fixSrcset(html);
 
-      // Extract asset URLs from this page
+      // Extract asset URLs
       const pageAssets = await page.evaluate(() => {
         const urls: string[] = [];
-        // Images
         document.querySelectorAll("img[src], img[srcset]").forEach((img) => {
           urls.push((img as HTMLImageElement).src);
           const srcset = (img as HTMLImageElement).srcset;
@@ -143,15 +156,12 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
             });
           }
         });
-        // Scripts
         document.querySelectorAll("script[src]").forEach((s) => {
           urls.push((s as HTMLScriptElement).src);
         });
-        // Links (CSS, preloads)
         document.querySelectorAll("link[href]").forEach((l) => {
           urls.push((l as HTMLLinkElement).href);
         });
-        // CSS background images and font-face URLs
         for (const sheet of Array.from(document.styleSheets)) {
           try {
             for (const rule of Array.from(sheet.cssRules)) {
@@ -172,22 +182,29 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
       for (const assetUrl of pageAssets) {
         try {
           const u = new URL(assetUrl);
-          if (u.origin === new URL(url).origin) {
+          if (u.origin === baseOrigin) {
             assetUrls.add(assetUrl);
+            assetPathMap.set(assetUrl, u.pathname.replace(/^\//, ""));
           }
         } catch {}
       }
+
+      // Rewrite HTML to use relative asset paths
+      html = rewriteHtmlAssets(html, baseOrigin);
 
       writeFileSync(htmlPath, html, "utf-8");
       pageFiles.push({ path: fileName, content: Buffer.from(html, "utf-8") });
     }
 
-    // 4. Download all discovered assets
-    const assetFiles: { path: string; content: Buffer }[] = [];
+    // 4. Download all discovered assets using request API (reliable for binary)
+    const assetFiles: ScrapedFile[] = [];
     for (const assetUrl of assetUrls) {
       try {
-        const response = await page.goto(assetUrl, { waitUntil: "domcontentloaded" });
-        if (!response) continue;
+        const response = await page.request.get(assetUrl);
+        if (!response.ok()) {
+          console.warn(`Asset download failed ${response.status()}: ${assetUrl}`);
+          continue;
+        }
 
         const buffer = await response.body();
         if (!buffer || buffer.length === 0) continue;
@@ -206,31 +223,18 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
 
     await browser.close();
 
-    // 5. Validate by serving locally and screenshotting
-    const port = 9876 + Math.floor(Math.random() * 1000);
-    const server = await startLocalServer(workDir, port);
-
-    const validateBrowser = await chromium.launch();
-    const validatePage = await validateBrowser.newPage({ viewport: { width: 1440, height: 900 } });
-    await validatePage.goto(`http://localhost:${port}/`, { waitUntil: "networkidle" });
-    await validatePage.waitForTimeout(3000);
-    const localScreenshot = await validatePage.screenshot({ fullPage: true });
-    await validateBrowser.close();
-    server.close();
-
-    // 6. Build final file list
+    // 5. Build final file list
     const allFiles: ScrapedFile[] = [...pageFiles, ...assetFiles];
 
-    // 7. Cleanup temp dir
+    // 6. Cleanup temp dir
     rmSync(workDir, { recursive: true, force: true });
 
     return {
       files: allFiles,
       contentHash: computeHash(allFiles),
-      screenshots: { live: liveScreenshot, local: Buffer.from(localScreenshot) },
     };
   } catch (err) {
-    await browser.close();
+    try { await browser.close(); } catch {}
     rmSync(workDir, { recursive: true, force: true });
     throw err;
   }
