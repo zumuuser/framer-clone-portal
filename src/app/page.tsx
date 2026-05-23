@@ -1,7 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { useSession, signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 export default function Home() {
+  const { data: session, status } = useSession();
+  const isLoading = status === "loading";
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center space-y-8">
       <div className="space-y-4 max-w-2xl">
@@ -14,12 +20,27 @@ export default function Home() {
         </p>
       </div>
       <div className="flex gap-4">
-        <Link href="/dashboard">
-          <Button size="lg">Get Started</Button>
-        </Link>
-        <Link href="/dashboard">
-          <Button size="lg" variant="outline">View Dashboard</Button>
-        </Link>
+        {isLoading ? (
+          <div className="h-12 w-32 bg-muted animate-pulse rounded" />
+        ) : session ? (
+          <>
+            <Link href="/dashboard">
+              <Button size="lg">Get Started</Button>
+            </Link>
+            <Link href="/dashboard">
+              <Button size="lg" variant="outline">View Dashboard</Button>
+            </Link>
+          </>
+        ) : (
+          <>
+            <Button size="lg" onClick={() => signIn("github")}>
+              Get Started
+            </Button>
+            <Button size="lg" variant="outline" onClick={() => signIn("github")}>
+              Sign In with GitHub
+            </Button>
+          </>
+        )}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full mt-12">
         <FeatureCard
