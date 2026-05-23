@@ -2,7 +2,7 @@ import GithubProvider from "next-auth/providers/github";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "./prisma";
 
-export const authOptions = {
+export const authOptions: any = {
   adapter: PrismaAdapter(prisma),
   providers: [
     GithubProvider({
@@ -16,19 +16,19 @@ export const authOptions = {
     }),
   ],
   session: {
-    strategy: "jwt" as const,
+    strategy: "jwt",
   },
   callbacks: {
-    async jwt({ token, account, profile }: { token: any; account: any; profile: any }) {
+    async jwt({ token, account, profile }: any) {
       if (account) {
         token.accessToken = account.access_token;
       }
-      if (profile && profile.id) {
+      if (profile?.id) {
         token.githubId = String(profile.id);
       }
       return token;
     },
-    async session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }: any) {
       if (token) {
         session.user.id = token.sub;
         session.user.githubId = token.githubId;
@@ -38,7 +38,7 @@ export const authOptions = {
     },
   },
   events: {
-    async signIn({ user, account, profile }: { user: any; account: any; profile: any }) {
+    async signIn({ user, account, profile }: any) {
       if (!account || !user?.email) return;
 
       try {
