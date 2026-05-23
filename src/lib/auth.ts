@@ -2,8 +2,7 @@ import GithubProvider from "next-auth/providers/github";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "./prisma";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const authOptions: any = {
+export const authOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     GithubProvider({
@@ -17,12 +16,14 @@ export const authOptions: any = {
     }),
   ],
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as const,
   },
   callbacks: {
     async jwt({ token, account, profile }: { token: any; account: any; profile: any }) {
-      if (account && profile) {
+      if (account) {
         token.accessToken = account.access_token;
+      }
+      if (profile && profile.id) {
         token.githubId = String(profile.id);
       }
       return token;
@@ -38,14 +39,18 @@ export const authOptions: any = {
   },
   events: {
     async signIn({ user, account, profile }: { user: any; account: any; profile: any }) {
-      if (account && profile) {
+      if (!account || !user?.email) return;
+
+      try {
         await prisma.user.update({
-          where: { email: user.email! },
+          where: { email: user.email },
           data: {
             githubToken: account.access_token,
-            githubId: String(profile.id),
+            ...(profile?.id ? { githubId: String(profile.id) } : {}),
           },
         });
+      } catch (err) {
+        console.error("Failed to update user after sign in:", err);
       }
     },
   },
