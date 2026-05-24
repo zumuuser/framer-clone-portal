@@ -90,7 +90,7 @@ async function startLocalServer(siteDir: string, port: number): Promise<ReturnTy
 export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
   const url = domain.startsWith("http") ? domain : `https://${domain}`;
   const baseOrigin = new URL(url).origin;
-  const workDir = join(process.cwd(), "tmp", `scrape-${Date.now()}`);
+  const workDir = join("/tmp", `scrape-${Date.now()}`);
   mkdirSync(workDir, { recursive: true });
 
   const browser = await chromium.launch();
