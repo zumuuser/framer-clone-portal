@@ -3,9 +3,18 @@ import { getServerSessionWithToken } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getOctokit, createTreeAndCommit } from "@/lib/github";
 import { scrapeFramerSite } from "@/lib/scraper";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
+import { guardedScrape, SecurityError } from "@/lib/security";
+
+function rateLimitResponse(retryAfterMs: number) {
+  return NextResponse.json(
+    { error: "Rate limit exceeded", retryAfter: Math.ceil(retryAfterMs / 1000) },
+    { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } }
+  );
+}
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -13,6 +22,12 @@ export async function POST(
   if (!session?.user?.id || !session.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rl = checkRateLimit(getRateLimitKey(req, `sync:${id}`), {
+    windowMs: 300_000,
+    maxRequests: 3,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
 
   const project = await prisma.project.findFirst({
     where: { id, userId: session.user.id },
@@ -42,8 +57,8 @@ export async function POST(
   });
 
   try {
-    // 1. Scrape the Framer site
-    const result = await scrapeFramerSite(project.framerUrl);
+    // 1. Scrape the Framer site (with URL validation guard)
+    const result = await guardedScrape(project.framerUrl, scrapeFramerSite);
 
     // 2. Check for changes
     const changesDetected = !project.lastContentHash || project.lastContentHash !== result.contentHash;
@@ -143,6 +158,11 @@ export async function POST(
       where: { id: project.id },
       data: { status: "error" },
     });
+
+    // Security validation failures are client errors (400), not server errors
+    if (err instanceof SecurityError) {
+      return NextResponse.json({ error: "Security check failed", message }, { status: 400 });
+    }
 
     return NextResponse.json(
       { error: "Sync failed", message },

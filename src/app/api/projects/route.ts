@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSessionWithToken } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 const createProjectSchema = z.object({
   name: z.string().min(1).max(100),
@@ -11,11 +12,24 @@ const createProjectSchema = z.object({
   deployProvider: z.enum(["netlify", "vercel", "self-hosted", "none"]).default("none"),
 });
 
-export async function GET() {
+function rateLimitResponse(retryAfterMs: number) {
+  return NextResponse.json(
+    { error: "Rate limit exceeded", retryAfter: Math.ceil(retryAfterMs / 1000) },
+    { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } }
+  );
+}
+
+export async function GET(req: NextRequest) {
   const session = await getServerSessionWithToken();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rl = checkRateLimit(getRateLimitKey(req, "projects:get"), {
+    windowMs: 60_000,
+    maxRequests: 100,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
 
   const projects = await prisma.project.findMany({
     where: { userId: session.user.id },
@@ -31,6 +45,12 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rl = checkRateLimit(getRateLimitKey(req, "projects:create"), {
+    windowMs: 60_000,
+    maxRequests: 10,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
 
   const body = await req.json();
   const parsed = createProjectSchema.safeParse(body);

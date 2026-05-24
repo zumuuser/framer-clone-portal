@@ -34,8 +34,12 @@ RUN npx prisma generate
 # Build the app
 RUN npm run build
 
-# Create volume directory for SQLite
-RUN mkdir -p /app/data
+# Create volume directory for SQLite and non-root user
+RUN mkdir -p /app/data && \
+    groupadd -r appuser && \
+    useradd -r -g appuser -d /app -s /sbin/nologin appuser && \
+    chown -R appuser:appuser /app/data && \
+    chmod -R o+r /app
 
 ENV DATABASE_URL="file:/app/data/dev.db"
 ENV NODE_ENV=production
@@ -43,5 +47,7 @@ ENV NEXTAUTH_URL="https://clone.webyverse.com"
 ENV PORT=3000
 
 EXPOSE 3000
+
+USER appuser
 
 CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]

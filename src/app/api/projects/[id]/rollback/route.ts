@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSessionWithToken } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getOctokit, rollbackToCommit } from "@/lib/github";
+import { z } from "zod";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
+
+const idSchema = z.string().uuid();
+const commitShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/i);
+
+function rateLimitResponse(retryAfterMs: number) {
+  return NextResponse.json(
+    { error: "Rate limit exceeded", retryAfter: Math.ceil(retryAfterMs / 1000) },
+    { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } }
+  );
+}
 
 export async function POST(
   req: NextRequest,
@@ -13,6 +25,17 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const rl = checkRateLimit(getRateLimitKey(req, "rollback"), {
+    windowMs: 60_000,
+    maxRequests: 5,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
+
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: "Invalid project ID" }, { status: 400 });
+  }
+
   const project = await prisma.project.findFirst({
     where: { id, userId: session.user.id },
   });
@@ -22,11 +45,11 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { commitSha } = body;
-
-  if (!commitSha || typeof commitSha !== "string") {
-    return NextResponse.json({ error: "commitSha is required" }, { status: 400 });
+  const parsedSha = commitShaSchema.safeParse(body.commitSha);
+  if (!parsedSha.success) {
+    return NextResponse.json({ error: "commitSha must be a valid hex SHA" }, { status: 400 });
   }
+  const commitSha = parsedSha.data;
 
   const [owner, repo] = project.githubRepo.split("/");
   if (!owner || !repo) {

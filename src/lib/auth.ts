@@ -1,6 +1,7 @@
 import GithubProvider from "next-auth/providers/github";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "./prisma";
+import { maybeEncryptToken } from "./crypto";
 
 export const authOptions: any = {
   adapter: PrismaAdapter(prisma),
@@ -42,10 +43,11 @@ export const authOptions: any = {
       if (!account || !user?.email) return;
 
       try {
+        const encryptedToken = maybeEncryptToken(account.access_token);
         await prisma.user.update({
           where: { email: user.email },
           data: {
-            githubToken: account.access_token,
+            githubToken: encryptedToken,
             ...(profile?.id ? { githubId: String(profile.id) } : {}),
           },
         });
