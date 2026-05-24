@@ -22,7 +22,8 @@ COPY prisma ./prisma/
 # Install dependencies
 RUN npm ci
 
-# Install Playwright browsers
+# Install Playwright browsers to shared path accessible by appuser
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright
 RUN npx playwright install chromium
 
 # Copy source code
@@ -39,7 +40,7 @@ RUN mkdir -p /app/data && \
     groupadd -r appuser && \
     useradd -r -g appuser -d /app -s /sbin/nologin appuser && \
     chown -R appuser:appuser /app/data && \
-    chmod -R o+r /app
+    chmod -R o+rx /app
 
 ENV DATABASE_URL="file:/app/data/dev.db"
 ENV NODE_ENV=production
