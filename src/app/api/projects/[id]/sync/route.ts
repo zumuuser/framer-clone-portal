@@ -5,6 +5,7 @@ import { getOctokit, createTreeAndCommit } from "@/lib/github";
 import { scrapeFramerSite } from "@/lib/scraper";
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 import { guardedScrape, SecurityError } from "@/lib/security";
+import { z } from "zod";
 
 function rateLimitResponse(retryAfterMs: number) {
   return NextResponse.json(
@@ -18,6 +19,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  const idSchema = z.string().min(1).max(50);
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: "Invalid project ID" }, { status: 400 });
+  }
   const session = await getServerSessionWithToken();
   if (!session?.user?.id || !session.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

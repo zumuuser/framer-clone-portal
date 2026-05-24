@@ -5,7 +5,7 @@ import { getOctokit, rollbackToCommit } from "@/lib/github";
 import { z } from "zod";
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
-const idSchema = z.string().uuid();
+const idSchema = z.string().min(1).max(50);
 const commitShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/i);
 
 function rateLimitResponse(retryAfterMs: number) {

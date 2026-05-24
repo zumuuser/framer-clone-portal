@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
-const idSchema = z.string().uuid();
+const idSchema = z.string().min(1).max(50);
 
 function rateLimitResponse(retryAfterMs: number) {
   return NextResponse.json(
