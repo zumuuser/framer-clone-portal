@@ -38,7 +38,7 @@ const nextConfig: NextConfig = {
               "font-src 'self'; " +
               "connect-src 'self' https://api.github.com; " +
               "frame-ancestors 'none'; " +
-              "base-uri 'self';";,
+              "base-uri 'self';",
           },
         ],
       },
