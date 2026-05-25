@@ -189,7 +189,7 @@ services:
           - node.role == manager
       resources:
         limits:
-          memory: 1G
+          memory: 2G
 
   wazuh-dashboard:
     image: wazuh/wazuh-dashboard:4.8.0
