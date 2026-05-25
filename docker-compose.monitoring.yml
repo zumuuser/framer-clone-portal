@@ -128,14 +128,14 @@ services:
         constraints:
           - node.platform.os == linux
 
-  wazuh-agent:
-    image: wazuh/wazuh-agent:4.8.0
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.8.0
     environment:
       - WAZUH_MANAGER=${WAZUH_MANAGER:-127.0.0.1}
-      - WAZUH_AGENT_NAME=framerclone-vps
+      - WAZUH_MANAGER_NAME=framerclone-vps
       - WAZUH_REGISTRATION_PASSWORD=${WAZUH_REGISTRATION_PASSWORD:-}
     volumes:
-      - wazuh-agent-data:/var/ossec/data
+      - wazuh-manager-data:/var/ossec/data
       - /var/log:/host/var/log:ro
       - /var/lib/docker/containers:/host/var/lib/docker/containers:ro
       - /:/host/rootfs:ro
@@ -155,4 +155,4 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
-  wazuh-agent-data:
+  wazuh-manager-data:
