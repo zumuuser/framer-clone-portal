@@ -1,6 +1,6 @@
-import { NextResponse } from next/server;
-import { requireAdmin } from @/lib/admin;
-import { prisma } from @/lib/prisma;
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin();
@@ -32,18 +32,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           lastSyncAt: true,
           createdAt: true,
         },
-        orderBy: { createdAt: desc },
+        orderBy: { createdAt: "desc" },
       },
       sessions: {
         select: { id: true, expires: true },
-        orderBy: { expires: desc },
+        orderBy: { expires: "desc" },
         take: 5,
       },
     },
   });
 
   if (!user) {
-    return NextResponse.json({ error: User not found }, { status: 404 });
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   return NextResponse.json(user);

@@ -1,25 +1,25 @@
-import { NextResponse } from next/server;
-import { requireAdmin } from @/lib/admin;
-import { prisma } from @/lib/prisma;
-import { logAudit } from @/lib/audit;
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: Request) {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
   const { searchParams } = new URL(req.url);
-  const page = parseInt(searchParams.get(page) || 1);
-  const limit = parseInt(searchParams.get(limit) || 20);
-  const search = searchParams.get(search) || ;
-  const status = searchParams.get(status) || undefined;
-  const role = searchParams.get(role) || undefined;
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "20");
+  const search = searchParams.get("search") || "";
+  const status = searchParams.get("status") || undefined;
+  const role = searchParams.get("role") || undefined;
 
   const where: any = {};
   if (search) {
     where.OR = [
-      { email: { contains: search, mode: insensitive } },
-      { name: { contains: search, mode: insensitive } },
-      { githubId: { contains: search, mode: insensitive } },
+      { email: { contains: search, mode: "insensitive" } },
+      { name: { contains: search, mode: "insensitive" } },
+      { githubId: { contains: search, mode: "insensitive" } },
     ];
   }
   if (status) where.status = status;
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
         createdAt: true,
         _count: { select: { projects: true } },
       },
-      orderBy: { createdAt: desc },
+      orderBy: { createdAt: "desc" },
     }),
     prisma.user.count({ where }),
   ]);
@@ -58,7 +58,7 @@ export async function PATCH(req: Request) {
   const { userId, role, status } = body;
 
   if (!userId) {
-    return NextResponse.json({ error: userId required }, { status: 400 });
+    return NextResponse.json({ error: "userId required" }, { status: 400 });
   }
 
   const updateData: any = {};
@@ -66,7 +66,7 @@ export async function PATCH(req: Request) {
   if (status !== undefined) updateData.status = status;
 
   if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ error: No fields to update }, { status: 400 });
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
   const updated = await prisma.user.update({
@@ -77,10 +77,10 @@ export async function PATCH(req: Request) {
 
   await logAudit({
     userId: auth.user?.id,
-    action: user.update,
-    resource: ,
+    action: "user.update",
+    resource: `user:${userId}`,
     metadata: updateData,
-    ip: req.headers.get(x-forwarded-for) || undefined,
+    ip: req.headers.get("x-forwarded-for") || undefined,
   });
 
   return NextResponse.json(updated);

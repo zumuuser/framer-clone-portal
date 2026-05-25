@@ -1,4 +1,4 @@
-import { prisma } from ./prisma;
+import { prisma } from "./prisma";
 
 export interface RateLimitRule {
   route: string;
@@ -19,7 +19,7 @@ export async function getRateLimitConfig(route: string): Promise<RateLimitRule |
 }
 
 export async function getAllRateLimitConfigs(): Promise<RateLimitRule[]> {
-  const configs = await prisma.rateLimitConfig.findMany({ orderBy: { route: asc } });
+  const configs = await prisma.rateLimitConfig.findMany({ orderBy: { route: "asc" } });
   return configs.map((c) => ({
     route: c.route,
     windowMs: c.windowMs,

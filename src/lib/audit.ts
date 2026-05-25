@@ -1,4 +1,4 @@
-import { prisma } from ./prisma;
+import { prisma } from "./prisma";
 
 export async function logAudit({
   userId,
@@ -24,6 +24,6 @@ export async function logAudit({
       },
     });
   } catch (err) {
-    console.error([AuditLog] Failed to log:, err);
+    console.error("[AuditLog] Failed to log:", err);
   }
 }

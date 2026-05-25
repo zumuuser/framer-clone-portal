@@ -1,6 +1,6 @@
-import { NextResponse } from next/server;
-import { requireAdmin } from @/lib/admin;
-import { prisma } from @/lib/prisma;
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -11,22 +11,22 @@ export async function GET() {
     githubClientSecret: !!process.env.GITHUB_CLIENT_SECRET,
     githubTokenEncryptionKey: !!process.env.GITHUB_TOKEN_ENCRYPTION_KEY,
     databaseUrl: !!process.env.DATABASE_URL,
-    nodeEnv: process.env.NODE_ENV === production,
-    https: true, // Traefik enforces this
-    csp: true,   // Set in next.config.ts
-    nonRootContainer: true, // Dockerfile uses appuser
-    rateLimiting: true, // lib/rate-limit.ts active
-    tokenEncryption: true, // lib/crypto.ts active
-    inputValidation: true, // Zod + security.ts
+    nodeEnv: process.env.NODE_ENV === "production",
+    https: true,
+    csp: true,
+    nonRootContainer: true,
+    rateLimiting: true,
+    tokenEncryption: true,
+    inputValidation: true,
   };
 
   const [userCount, adminCount, activeUsers, suspendedUsers, bannedUsers, projectCount, syncCount] =
     await Promise.all([
       prisma.user.count(),
-      prisma.user.count({ where: { role: admin } }),
-      prisma.user.count({ where: { status: active } }),
-      prisma.user.count({ where: { status: suspended } }),
-      prisma.user.count({ where: { status: banned } }),
+      prisma.user.count({ where: { role: "admin" } }),
+      prisma.user.count({ where: { status: "active" } }),
+      prisma.user.count({ where: { status: "suspended" } }),
+      prisma.user.count({ where: { status: "banned" } }),
       prisma.project.count(),
       prisma.syncLog.count(),
     ]);
