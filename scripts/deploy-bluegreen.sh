@@ -67,9 +67,10 @@ docker stack deploy -c docker-compose.monitoring.yml "$MONITORING_STACK" 2>&1 | 
 log "Waiting for monitoring services to be healthy..."
 sleep 10
 
-# Verify Prometheus is up
+# Verify Prometheus is up (via Docker exec since it's not on host network)
+PROM_CONTAINER=$(docker ps --filter "name=monitoring_prometheus" --format "{{.ID}}" | head -1)
 for i in {1..30}; do
-  if curl -s -u admin:fOwTMYJ9kOroFodpKLt9CVbJGxDWXH5Y_FL59DKjuwQ http://localhost:9090/-/healthy >/dev/null 2>&1; then
+  if [ -n "$PROM_CONTAINER" ] && docker exec "$PROM_CONTAINER" wget -qO- http://localhost:9090/-/healthy 2>/dev/null | grep -q "Prometheus"; then
     log "✓ Prometheus healthy"
     break
   fi
@@ -81,9 +82,10 @@ for i in {1..30}; do
   sleep 2
 done
 
-# Verify Grafana is up
+# Verify Grafana is up (via Docker exec)
+GRAF_CONTAINER=$(docker ps --filter "name=monitoring_grafana" --format "{{.ID}}" | head -1)
 for i in {1..30}; do
-  if curl -s http://localhost:3000/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+  if [ -n "$GRAF_CONTAINER" ] && docker exec "$GRAF_CONTAINER" wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -q '"status":"ok"'; then
     log "✓ Grafana healthy"
     break
   fi
