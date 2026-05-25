@@ -20,7 +20,7 @@ interface SecurityStatus {
 
 export default function SecurityDashboard() {
   const [status, setStatus] = useState<SecurityStatus | null>(null);
-  const [checks, setChecks] = useState<Record<string, boolean>>({});
+  const [, setChecks] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     // Run client-side security checks

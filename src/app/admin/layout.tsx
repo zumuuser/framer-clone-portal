@@ -3,9 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import type { Session } from "next-auth";
 
 async function checkAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = (await getServerSession(authOptions)) as Session | null;
   if (!session?.user?.email) redirect("/");
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
