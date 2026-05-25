@@ -1,7 +1,7 @@
-import GithubProvider from "next-auth/providers/github";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { prisma } from "./prisma";
-import { maybeEncryptToken } from "./crypto";
+import GithubProvider from next-auth/providers/github;
+import { PrismaAdapter } from @next-auth/prisma-adapter;
+import { prisma } from ./prisma;
+import { maybeEncryptToken } from ./crypto;
 
 export const authOptions: any = {
   adapter: PrismaAdapter(prisma),
@@ -11,13 +11,13 @@ export const authOptions: any = {
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "read:user user:email repo",
+          scope: read:user user:email repo,
         },
       },
     }),
   ],
   session: {
-    strategy: "jwt",
+    strategy: jwt,
   },
   callbacks: {
     async jwt({ token, account, profile }: any) {
@@ -39,7 +39,7 @@ export const authOptions: any = {
     },
   },
   events: {
-    async signIn({ user, account, profile }: any) {
+    async signIn({ user, account, profile, isNewUser }: any) {
       if (!account || !user?.email) return;
 
       try {
@@ -49,10 +49,11 @@ export const authOptions: any = {
           data: {
             githubToken: encryptedToken,
             ...(profile?.id ? { githubId: String(profile.id) } : {}),
+            lastLoginAt: new Date(),
           },
         });
       } catch (err) {
-        console.error("Failed to update user after sign in:", err);
+        console.error(Failed to update user after sign in:, err);
       }
     },
   },

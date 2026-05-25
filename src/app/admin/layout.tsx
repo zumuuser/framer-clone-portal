@@ -36,6 +36,18 @@ export default async function AdminLayout({
               Dashboard
             </Link>
             <Link
+              href="/admin/users"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              Users
+            </Link>
+            <Link
+              href="/admin/activity"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              Activity Log
+            </Link>
+            <Link
               href="/admin/security"
               className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
             >
