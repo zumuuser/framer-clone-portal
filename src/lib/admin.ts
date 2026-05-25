@@ -2,9 +2,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "./auth";
 import { prisma } from "./prisma";
 import { NextResponse } from "next/server";
+import type { Session } from "next-auth";
 
 export async function requireAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = (await getServerSession(authOptions)) as Session | null;
   if (!session?.user?.email) {
     return { error: "Unauthorized", status: 401 };
   }

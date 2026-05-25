@@ -3,9 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import type { Session } from "next-auth";
 
 async function checkAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = (await getServerSession(authOptions)) as Session | null;
   if (!session?.user?.email) redirect("/");
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
@@ -33,6 +34,18 @@ export default async function AdminLayout({
               className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
             >
               Dashboard
+            </Link>
+            <Link
+              href="/admin/users"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              Users
+            </Link>
+            <Link
+              href="/admin/activity"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              Activity Log
             </Link>
             <Link
               href="/admin/security"

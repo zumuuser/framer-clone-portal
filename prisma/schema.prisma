@@ -35,19 +35,31 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String     @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?    @unique
   emailVerified DateTime?
   image         String?
-  githubId      String?   @unique
+  githubId      String?    @unique
   githubToken   String?
-  role          String    @default("user")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  role          String     @default("user")
+  status        String     @default("active")
+  lastLoginAt   DateTime?
+  lastIp        String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   accounts      Account[]
   sessions      Session[]
   projects      Project[]
+  auditLogs     AuditLog[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 model Project {
@@ -71,14 +83,6 @@ model Project {
   @@index([userId])
 }
 
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-}
-
 model SyncLog {
   id              String   @id @default(cuid())
   projectId       String
@@ -87,10 +91,35 @@ model SyncLog {
   filesChanged    Int      @default(0)
   commitSha       String?
   commitMessage   String?
-  errorMessage    String?
+  errorMessage   String?
   startedAt       DateTime @default(now())
   completedAt     DateTime?
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  resource  String
+  metadata  String?
+  ip        String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model RateLimitConfig {
+  id          String   @id @default(cuid())
+  route       String   @unique
+  identifier  String   @default("ip")
+  windowMs    Int
+  maxRequests Int
+  description String?
+  updatedAt   DateTime @updatedAt
 }

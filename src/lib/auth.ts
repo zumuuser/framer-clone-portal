@@ -49,6 +49,7 @@ export const authOptions: any = {
           data: {
             githubToken: encryptedToken,
             ...(profile?.id ? { githubId: String(profile.id) } : {}),
+            lastLoginAt: new Date(),
           },
         });
       } catch (err) {
