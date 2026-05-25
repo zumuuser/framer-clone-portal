@@ -100,17 +100,24 @@ model SyncLog {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  action    String
-  resource  String
-  metadata  String?
-  ip        String?
-  createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id            String   @id @default(cuid())
+  userId        String?
+  action        String
+  resource      String
+  metadata      String?
+  ip            String?
+  reason        String?   // Why this action was taken
+  decisionPoint String?   // What decision led to this action
+  result        String?   // Outcome: success / failure / partial
+  acssLayer     String?   // Prevent / Detect / Verify
+  stopStep      String?   // Search / Test / Observe / Prove
+  createdAt     DateTime @default(now())
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([action])
+  @@index([acssLayer])
+  @@index([stopStep])
   @@index([createdAt])
 }
 

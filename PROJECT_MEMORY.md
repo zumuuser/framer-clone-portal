@@ -2,6 +2,7 @@
 
 > **Purpose:** This document exists so that if memory compression occurs, reading this file restores full context before any action is taken.  
 > **Rule:** READ THIS FILE FIRST at the start of every session. Do NOT act until you have read it.  
+> **MANDATORY:** After EVERY memory compression, review this file AND `AI_Code_Safety_System_ACSS_Methodology.docx` before ANY action.  
 > **Last Updated:** 2026-05-25
 
 ---
@@ -20,7 +21,9 @@
 **Repo:** `zumuuser/framer-clone-portal`  
 **VPS:** Hetzner, 178.105.193.3, 4 vCPU, 7.6GB RAM, 150GB SSD  
 **Domain:** `clone.webyverse.com`  
-**Deploy Path:** `/var/lib/dokploy/applications/framerclone-portal`
+**Deploy Path:** `/var/lib/dokploy/applications/framerclone-portal`  
+**SSH Access:** `ssh -i ~/.ssh/framerclone_deploy root@178.105.193.3`  
+**SSH Key:** `~/.ssh/framerclone_deploy` (ed25519)
 
 ---
 
@@ -159,6 +162,9 @@
 - [ ] NEVER make database schema changes without a migration plan
 - [ ] NEVER remove or alter Wazuh without approval
 - [ ] NEVER change Grafana/Prometheus auth without documenting new passwords in `.env`
+- [ ] NEVER ask the user to run manual steps on the VPS — automate everything
+- [ ] NEVER skip ACSS review after memory compression
+- [ ] NEVER use GitHub Actions (removed — use VPS cron only)
 
 ---
 
@@ -170,8 +176,8 @@
 | **Phase 1** | ✅ DONE | Secure monitoring stack (Prometheus auth, Grafana hardening) |
 | **Phase 2** | ⏳ NEXT | Configure Grafana dashboards (System Overview, App Performance, Security) |
 | **Phase 3** | ⏳ PENDING | Configure Wazuh properly (dashboard, agent, file integrity, active response) |
-| **Phase 4** | ⏳ PENDING | Formalize blue-green deployment protocol script |
-| **Phase 5** | ⏳ PENDING | Build admin panel + CEO dashboard (using blue-green protocol) |
+| **Phase 4** | ✅ DONE | Formalize blue-green deployment protocol script |
+| **Phase 5** | 🔄 IN PROGRESS | Build admin panel + CEO dashboard + ACSS Action Logging Portal |
 | **Phase 6** | ⏳ PENDING | ACSS compliance CI pipeline (npm audit, Trivy, Gitleaks, slopcheck) |
 
 ---
@@ -190,7 +196,8 @@
 | `prisma/schema.prisma` | Database schema |
 | `data/prod.db` | SQLite database (bind-mounted) |
 | `C4_ARCHITECTURE.md` | C4 model + ACSS compliance matrix |
-| `scripts/deploy-bluegreen.sh` | Blue-green deployment script (needs updating per Phase 4) |
+| `scripts/deploy-bluegreen.sh` | Blue-green deployment script (automated — no manual steps) |
+| `scripts/setup-wazuh.sh` | Idempotent Wazuh setup (certs + agent + FIM + active response) |
 | `monitoring/prometheus.yml` | Prometheus scrape config |
 | `monitoring/prometheus.htpasswd` | Basic auth credentials for Prometheus |
 | `monitoring/grafana/provisioning/` | Grafana datasources and dashboards auto-provisioning |
@@ -272,13 +279,12 @@ model SyncLog {
 }
 ```
 
-**Note:** Schema does NOT yet have:
-- `User.status` (active/suspended/banned)
-- `User.lastLoginAt` / `User.lastIp`
-- `AuditLog` table
+**Schema HAS:**
+- `User.status`, `User.lastLoginAt`, `User.lastIp`
+- `AuditLog` table (with ACSS layer + STOP step tracking)
 - `RateLimitConfig` table
 
-These are planned for Phase 5 but require a migration.
+**Action Logging Portal:** Every deployment action is logged with ACSS layer mapping and STOP framework step.
 
 ---
 
@@ -328,6 +334,12 @@ The project follows **ACSS (AI Code Safety System)** with three layers:
 - **T**est — Run automated security scans
 - **O**bserve — Monitor containers, logs, network traffic
 - **P**rove — Match output against README/C4 spec
+
+**After EVERY action, log it:**
+- Action description, reason, decision point, result
+- ACSS layer (Prevent / Detect / Verify)
+- STOP step (Search / Test / Observe / Prove)
+- Viewable at `/admin/audit-log` (Action Logging Portal)
 
 ---
 

@@ -54,6 +54,12 @@ export default async function AdminLayout({
               Security
             </Link>
             <Link
+              href="/admin/audit-log"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              ACSS Audit Log
+            </Link>
+            <Link
               href="https://dashboard.clone.webyverse.com"
               target="_blank"
               className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
