@@ -70,7 +70,7 @@ sleep 10
 # Verify Prometheus is up (via Docker exec since it's not on host network)
 PROM_CONTAINER=$(docker ps --filter "name=monitoring_prometheus" --format "{{.ID}}" | head -1)
 for i in {1..30}; do
-  if [ -n "$PROM_CONTAINER" ] && docker exec "$PROM_CONTAINER" curl -s http://localhost:9090/-/healthy 2>/dev/null | grep -q "Prometheus"; then
+  if [ -n "$PROM_CONTAINER" ] && docker exec "$PROM_CONTAINER" wget -qO- http://localhost:9090/-/healthy 2>/dev/null | grep -q "Prometheus"; then
     log "✓ Prometheus healthy"
     break
   fi
