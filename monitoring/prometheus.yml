@@ -24,3 +24,7 @@ scrape_configs:
     static_configs:
       - targets: ['framerclone_green:3000']
     metrics_path: /api/metrics
+
+  - job_name: 'wazuh-exporter'
+    static_configs:
+      - targets: ['monitoring_wazuh-exporter:9101']

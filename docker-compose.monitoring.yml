@@ -4,13 +4,15 @@ version: "3.8"
 # Deploy: docker stack deploy -c docker-compose.monitoring.yml monitoring
 #
 # Services:
-# - Prometheus: Metrics collection
-# - Grafana: Visualization dashboards
+# - Prometheus: Metrics collection (protected by basic auth)
+# - Grafana: Visualization dashboards (strong password required)
 # - Loki: Log aggregation
 # - Promtail: Log shipping from Docker
 # - Node Exporter: Host system metrics
 # - cAdvisor: Container metrics
-# - Wazuh Agent: File integrity + rootkit detection
+# - Wazuh Manager: File integrity + rootkit detection + security alerts
+# - Wazuh Indexer: OpenSearch-based alert storage
+# - Wazuh Dashboard: Web UI for security alerts
 
 services:
   prometheus:
@@ -24,6 +26,7 @@ services:
       - '--web.enable-lifecycle'
     volumes:
       - /var/lib/dokploy/applications/framerclone-portal/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /var/lib/dokploy/applications/framerclone-portal/monitoring/prometheus.htpasswd:/etc/prometheus/prometheus.htpasswd:ro
       - prometheus-data:/prometheus
     networks:
       - dokploy-network
@@ -37,6 +40,8 @@ services:
         - "traefik.http.routers.prometheus.rule=Host(`metrics.clone.webyverse.com`)"
         - "traefik.http.routers.prometheus.entrypoints=websecure"
         - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.prometheus.middlewares=prometheus-auth"
+        - "traefik.http.middlewares.prometheus-auth.basicauth.users=admin:$$2b$$10$$YLl3zfA8NcGLo72IUnhvV.KKfaY/Czxja9pQ91sgr0SwnYfDE82dC"
         - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
   grafana:
@@ -45,6 +50,10 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_ORG_CREATE=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_SECURITY_ANGULAR_SUPPORT_ENABLED=false
       - GF_SERVER_ROOT_URL=https://dashboard.clone.webyverse.com
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
     volumes:
@@ -128,14 +137,16 @@ services:
         constraints:
           - node.platform.os == linux
 
-  wazuh-agent:
-    image: wazuh/wazuh-agent:4.8.0
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.8.0
+    hostname: wazuh-manager
     environment:
-      - WAZUH_MANAGER=${WAZUH_MANAGER:-127.0.0.1}
-      - WAZUH_AGENT_NAME=framerclone-vps
-      - WAZUH_REGISTRATION_PASSWORD=${WAZUH_REGISTRATION_PASSWORD:-}
+      - WAZUH_MANAGER_NAME=framerclone-vps
+      - INDEXER_IP=wazuh-indexer
+      - INDEXER_PORT=9200
     volumes:
-      - wazuh-agent-data:/var/ossec/data
+      - wazuh-manager-data:/var/ossec/data
+      - wazuh-logs:/var/ossec/logs
       - /var/log:/host/var/log:ro
       - /var/lib/docker/containers:/host/var/lib/docker/containers:ro
       - /:/host/rootfs:ro
@@ -147,6 +158,85 @@ services:
         constraints:
           - node.platform.os == linux
 
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.8.0
+    hostname: wazuh-indexer
+    environment:
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+      - discovery.type=single-node
+      - node.name=wazuh-indexer
+      - cluster.name=wazuh-cluster
+      - cluster.initial_master_nodes=wazuh-indexer
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - /var/lib/dokploy/applications/framerclone-portal/monitoring/wazuh/certs:/usr/share/wazuh-indexer/certs:ro
+    networks:
+      - dokploy-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 1G
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.8.0
+    hostname: wazuh-dashboard
+    environment:
+      - OPENSEARCH_HOSTS=https://wazuh-indexer:9200
+      - WAZUH_API_URL=https://wazuh-manager:55000
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD:-admin}
+      - DASHBOARD_USERNAME=${WAZUH_DASHBOARD_USER:-admin}
+      - DASHBOARD_PASSWORD=${WAZUH_DASHBOARD_PASSWORD:-admin}
+    volumes:
+      - /var/lib/dokploy/applications/framerclone-portal/monitoring/wazuh/certs:/usr/share/wazuh-dashboard/certs:ro
+    networks:
+      - dokploy-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.wazuh.rule=Host(`wazuh.clone.webyverse.com`)"
+        - "traefik.http.routers.wazuh.entrypoints=websecure"
+        - "traefik.http.routers.wazuh.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.wazuh.middlewares=wazuh-auth"
+        - "traefik.http.middlewares.wazuh-auth.basicauth.users=admin:$$2b$$10$$YLl3zfA8NcGLo72IUnhvV.KKfaY/Czxja9pQ91sgr0SwnYfDE82dC"
+        - "traefik.http.services.wazuh.loadbalancer.server.port=5601"
+
+  wazuh-exporter:
+    image: python:3.11-slim
+    command: >
+      sh -c "pip install --no-cache-dir prometheus-client==0.20.0 &&
+             python /app/exporter.py"
+    environment:
+      - WAZUH_ALERTS_DIR=/var/ossec/logs/alerts
+      - PORT=9101
+      - SCRAPE_INTERVAL=60
+    volumes:
+      - /var/lib/dokploy/applications/framerclone-portal/monitoring/wazuh-exporter/exporter.py:/app/exporter.py:ro
+      - wazuh-logs:/var/ossec/logs:ro
+    networks:
+      - dokploy-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
 networks:
   dokploy-network:
     external: true
@@ -155,4 +245,7 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
-  wazuh-agent-data:
+  wazuh-manager-data:
+  wazuh-indexer-data:
+  wazuh-dashboard-data:
+  wazuh-logs:

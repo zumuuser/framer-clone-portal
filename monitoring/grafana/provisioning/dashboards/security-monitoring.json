@@ -1,0 +1,126 @@
+{
+  "id": null,
+  "uid": "security-monitoring",
+  "title": "FramerClone — Security Monitoring",
+  "tags": ["framerclone", "security", "wazuh"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Failed Logins (App)",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "${loki}" },
+      "targets": [
+        {
+          "expr": "{container_name=~\".*framerclone.*\"} |= \"Unauthorized\"",
+          "refId": "A",
+          "editorMode": "builder"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Rate Limit Hits",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "${loki}" },
+      "targets": [
+        {
+          "expr": "{container_name=~\".*framerclone.*\"} |= \"Rate limit exceeded\"",
+          "refId": "A",
+          "editorMode": "builder"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "Container Restarts",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "changes(container_last_seen[1h])",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "id": 4,
+      "title": "Wazuh Alerts (Total)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "wazuh_alerts_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 }
+    },
+    {
+      "id": 5,
+      "title": "Wazuh FIM Changes",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "wazuh_fim_changes_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 }
+    },
+    {
+      "id": 6,
+      "title": "SSH Failed Attempts",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "${loki}" },
+      "targets": [
+        {
+          "expr": "{job=\"/var/log/auth.log\"} |= \"Failed password\"",
+          "refId": "A",
+          "editorMode": "builder"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
+    },
+    {
+      "id": 7,
+      "title": "App Errors",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "${loki}" },
+      "targets": [
+        {
+          "expr": "{container_name=~\".*framerclone.*\"} |= \"error\"",
+          "refId": "A",
+          "editorMode": "builder"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }
+    },
+    {
+      "id": 8,
+      "title": "Network Drops",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(node_network_receive_drop_total[5m])",
+          "legendFormat": "RX drops {{device}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }
+    }
+  ]
+}

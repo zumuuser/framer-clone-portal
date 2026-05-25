@@ -1,0 +1,231 @@
+{
+  "id": null,
+  "uid": "system-overview",
+  "title": "FramerClone — System Overview",
+  "tags": ["framerclone", "system", "overview"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "App Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job=\"framerclone-blue\"}",
+          "legendFormat": "Blue",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" } }, "type": "value" },
+            { "options": { "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ]
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Total Users",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "framerclone_users_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "Total Projects",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "framerclone_projects_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 }
+    },
+    {
+      "id": 4,
+      "title": "Total Syncs",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "framerclone_syncs_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 }
+    },
+    {
+      "id": 5,
+      "title": "Uptime % (24h)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "avg_over_time(up{job=\"framerclone-blue\"}[1d]) * 100",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 }
+    },
+    {
+      "id": 6,
+      "title": "Container Count",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "count(container_last_seen)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 }
+    },
+    {
+      "id": 7,
+      "title": "CPU Usage %",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 }
+    },
+    {
+      "id": 8,
+      "title": "Memory Usage %",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "100 * (1 - ((node_memory_MemAvailable_bytes or node_memory_MemFree_bytes) / node_memory_MemTotal_bytes))",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 }
+    },
+    {
+      "id": 9,
+      "title": "Disk Usage %",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})",
+          "legendFormat": "{{instance}} — /",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 }
+    },
+    {
+      "id": 10,
+      "title": "Network RX / TX",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(node_network_receive_bytes_total[5m])",
+          "legendFormat": "RX {{device}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_network_transmit_bytes_total[5m])",
+          "legendFormat": "TX {{device}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
+    }
+  ]
+}
