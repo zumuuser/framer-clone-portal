@@ -4,13 +4,13 @@ version: "3.8"
 # Deploy: docker stack deploy -c docker-compose.monitoring.yml monitoring
 #
 # Services:
-# - Prometheus: Metrics collection
-# - Grafana: Visualization dashboards
+# - Prometheus: Metrics collection (protected by basic auth)
+# - Grafana: Visualization dashboards (strong password required)
 # - Loki: Log aggregation
 # - Promtail: Log shipping from Docker
 # - Node Exporter: Host system metrics
 # - cAdvisor: Container metrics
-# - Wazuh Agent: File integrity + rootkit detection
+# - Wazuh Manager: File integrity + rootkit detection
 
 services:
   prometheus:
@@ -24,6 +24,7 @@ services:
       - '--web.enable-lifecycle'
     volumes:
       - /var/lib/dokploy/applications/framerclone-portal/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /var/lib/dokploy/applications/framerclone-portal/monitoring/prometheus.htpasswd:/etc/prometheus/prometheus.htpasswd:ro
       - prometheus-data:/prometheus
     networks:
       - dokploy-network
@@ -37,6 +38,8 @@ services:
         - "traefik.http.routers.prometheus.rule=Host(`metrics.clone.webyverse.com`)"
         - "traefik.http.routers.prometheus.entrypoints=websecure"
         - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.prometheus.middlewares=prometheus-auth"
+        - "traefik.http.middlewares.prometheus-auth.basicauth.users=admin:$$2b$$10$$YLl3zfA8NcGLo72IUnhvV.KKfaY/Czxja9pQ91sgr0SwnYfDE82dC"
         - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
   grafana:
@@ -45,6 +48,10 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_ORG_CREATE=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_SECURITY_ANGULAR_SUPPORT_ENABLED=false
       - GF_SERVER_ROOT_URL=https://dashboard.clone.webyverse.com
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
     volumes:
