@@ -70,7 +70,7 @@ sleep 10
 # Verify Prometheus is up (via Docker exec since it's not on host network)
 PROM_CONTAINER=$(docker ps --filter "name=monitoring_prometheus" --format "{{.ID}}" | head -1)
 for i in {1..30}; do
-  if [ -n "$PROM_CONTAINER" ] && docker exec "$PROM_CONTAINER" wget -qO- http://localhost:9090/-/healthy 2>/dev/null | grep -q "Prometheus"; then
+  if [ -n "$PROM_CONTAINER" ] && docker exec "$PROM_CONTAINER" curl -s http://localhost:9090/-/healthy 2>/dev/null | grep -q "Prometheus"; then
     log "✓ Prometheus healthy"
     break
   fi
@@ -85,7 +85,7 @@ done
 # Verify Grafana is up (via Docker exec)
 GRAF_CONTAINER=$(docker ps --filter "name=monitoring_grafana" --format "{{.ID}}" | head -1)
 for i in {1..30}; do
-  if [ -n "$GRAF_CONTAINER" ] && docker exec "$GRAF_CONTAINER" wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+  if [ -n "$GRAF_CONTAINER" ] && docker exec "$GRAF_CONTAINER" curl -s http://localhost:3000/api/health 2>/dev/null | grep -q '"status":"ok"'; then
     log "✓ Grafana healthy"
     break
   fi
