@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 
 export async function GET() {
   const auth = await requireAdmin();
-  if (auth.error) return auth.error;
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const configs = await getAllRateLimitConfigs();
   return NextResponse.json(configs);
@@ -13,7 +13,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const auth = await requireAdmin();
-  if (auth.error) return auth.error;
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
   const { route, windowMs, maxRequests, description } = body;

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const auth = await requireAdmin();
-  if (auth.error) return auth.error;
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const [userCount, projectCount, syncCount, recentSyncs, activeUsers, suspendedUsers, bannedUsers] = await Promise.all([
     prisma.user.count(),

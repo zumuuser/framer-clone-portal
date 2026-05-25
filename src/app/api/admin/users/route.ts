@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 
 export async function GET(req: Request) {
   const auth = await requireAdmin();
-  if (auth.error) return auth.error;
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { searchParams } = new URL(req.url);
   const page = parseInt(searchParams.get("page") || "1");
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   const auth = await requireAdmin();
-  if (auth.error) return auth.error;
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
   const { userId, role, status } = body;

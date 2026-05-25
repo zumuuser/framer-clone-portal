@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const auth = await requireAdmin();
-  if (auth.error) return auth.error;
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const checks = {
     nextauthSecret: !!process.env.NEXTAUTH_SECRET && process.env.NEXTAUTH_SECRET.length >= 32,
