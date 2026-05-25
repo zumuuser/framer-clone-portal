@@ -85,7 +85,7 @@ done
 # Verify Grafana is up (via Docker exec)
 GRAF_CONTAINER=$(docker ps --filter "name=monitoring_grafana" --format "{{.ID}}" | head -1)
 for i in {1..30}; do
-  if [ -n "$GRAF_CONTAINER" ] && docker exec "$GRAF_CONTAINER" curl -s http://localhost:3000/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+  if [ -n "$GRAF_CONTAINER" ] && docker exec "$GRAF_CONTAINER" curl -s http://localhost:3000/api/health 2>/dev/null | grep -q '"database":"ok"'; then
     log "✓ Grafana healthy"
     break
   fi
