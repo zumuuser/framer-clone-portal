@@ -42,6 +42,7 @@ model User {
   image         String?
   githubId      String?   @unique
   githubToken   String?
+  role          String    @default("user")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]

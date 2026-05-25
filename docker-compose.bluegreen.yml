@@ -1,0 +1,105 @@
+version: "3.8"
+
+# Blue-Green Deployment for FramerClone Portal
+# Usage: docker stack deploy -c docker-compose.bluegreen.yml framerclone
+#
+# Deploy flow:
+# 1. Build image: docker build -t framerclone-portal:latest .
+# 2. Run deploy script: ./scripts/deploy-bluegreen.sh
+#
+# The script updates the INACTIVE color, tests it, then swaps Traefik labels.
+
+services:
+  blue:
+    image: framerclone-portal:latest
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=file:/app/data/prod.db
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://clone.webyverse.com}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_TOKEN_ENCRYPTION_KEY=${GITHUB_TOKEN_ENCRYPTION_KEY}
+    volumes:
+      - /var/lib/dokploy/applications/framerclone-portal/data:/app/data
+    networks:
+      - dokploy-network
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: pause
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # Blue test domain
+        - "traefik.http.routers.framerclone-blue.rule=Host(`blue.clone.webyverse.com`)"
+        - "traefik.http.routers.framerclone-blue.entrypoints=websecure"
+        - "traefik.http.routers.framerclone-blue.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.framerclone-blue.service=framerclone-blue"
+        # Blue HTTP→HTTPS redirect
+        - "traefik.http.routers.framerclone-blue-http.rule=Host(`blue.clone.webyverse.com`)"
+        - "traefik.http.routers.framerclone-blue-http.entrypoints=web"
+        - "traefik.http.routers.framerclone-blue-http.middlewares=framerclone-blue-https"
+        - "traefik.http.middlewares.framerclone-blue-https.redirectscheme.scheme=https"
+        # Service definition
+        - "traefik.http.services.framerclone-blue.loadbalancer.server.port=3000"
+        # Health check
+        - "traefik.http.services.framerclone-blue.loadbalancer.healthcheck.path=/"
+        - "traefik.http.services.framerclone-blue.loadbalancer.healthcheck.interval=10s"
+
+  green:
+    image: framerclone-portal:latest
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=file:/app/data/prod.db
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://clone.webyverse.com}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_TOKEN_ENCRYPTION_KEY=${GITHUB_TOKEN_ENCRYPTION_KEY}
+    volumes:
+      - /var/lib/dokploy/applications/framerclone-portal/data:/app/data
+    networks:
+      - dokploy-network
+    deploy:
+      replicas: 0
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: pause
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # Green test domain
+        - "traefik.http.routers.framerclone-green.rule=Host(`green.clone.webyverse.com`)"
+        - "traefik.http.routers.framerclone-green.entrypoints=websecure"
+        - "traefik.http.routers.framerclone-green.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.framerclone-green.service=framerclone-green"
+        # Green HTTP→HTTPS redirect
+        - "traefik.http.routers.framerclone-green-http.rule=Host(`green.clone.webyverse.com`)"
+        - "traefik.http.routers.framerclone-green-http.entrypoints=web"
+        - "traefik.http.routers.framerclone-green-http.middlewares=framerclone-green-https"
+        - "traefik.http.middlewares.framerclone-green-https.redirectscheme.scheme=https"
+        # Service definition
+        - "traefik.http.services.framerclone-green.loadbalancer.server.port=3000"
+        # Health check
+        - "traefik.http.services.framerclone-green.loadbalancer.healthcheck.path=/"
+        - "traefik.http.services.framerclone-green.loadbalancer.healthcheck.interval=10s"
+
+networks:
+  dokploy-network:
+    external: true
