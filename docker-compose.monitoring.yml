@@ -187,9 +187,11 @@ services:
       placement:
         constraints:
           - node.role == manager
-      resources:
-        limits:
-          memory: 2G
+      # Memory limit removed — OpenSearch security plugin needs >256MB direct buffer
+      # which fails under Docker memory limits. VPS has 5.1GB available.
+      # resources:
+      #   limits:
+      #     memory: 3G
 
   wazuh-dashboard:
     image: wazuh/wazuh-dashboard:4.8.0
