@@ -1,18 +1,38 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin";
+import { z } from "zod";
+import { requireAdminWithRateLimit, validationError, rateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 
+const GetUsersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().max(200).optional(),
+  status: z.enum(["active", "suspended", "banned"]).optional(),
+  role: z.enum(["user", "admin"]).optional(),
+});
+
+const PatchUserBodySchema = z.object({
+  userId: z.string().min(1).max(50),
+  role: z.enum(["user", "admin"]).optional(),
+  status: z.enum(["active", "suspended", "banned"]).optional(),
+  projectLimit: z.coerce.number().int().min(0).max(1000).optional(),
+}).refine((data) => data.role !== undefined || data.status !== undefined || data.projectLimit !== undefined, {
+  message: "At least one of role, status, or projectLimit must be provided",
+});
+
 export async function GET(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdminWithRateLimit(req);
+  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { searchParams } = new URL(req.url);
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const search = searchParams.get("search") || "";
-  const status = searchParams.get("status") || undefined;
-  const role = searchParams.get("role") || undefined;
+  const parseResult = GetUsersQuerySchema.safeParse(Object.fromEntries(searchParams));
+  if (!parseResult.success) {
+    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
+  }
+
+  const { page, limit, search, status, role } = parseResult.data;
 
   const where: any = {};
   if (search) {
@@ -51,28 +71,27 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdminWithRateLimit(req);
+  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
-  const { userId, role, status } = body;
-
-  if (!userId) {
-    return NextResponse.json({ error: "userId required" }, { status: 400 });
+  const parseResult = PatchUserBodySchema.safeParse(body);
+  if (!parseResult.success) {
+    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
   }
+
+  const { userId, role, status, projectLimit } = parseResult.data;
 
   const updateData: any = {};
   if (role !== undefined) updateData.role = role;
   if (status !== undefined) updateData.status = status;
-
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-  }
+  if (projectLimit !== undefined) updateData.projectLimit = projectLimit;
 
   const updated = await prisma.user.update({
     where: { id: userId },
     data: updateData,
-    select: { id: true, email: true, role: true, status: true },
+    select: { id: true, email: true, role: true, status: true, projectLimit: true },
   });
 
   await logAudit({

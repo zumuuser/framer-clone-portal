@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin";
+import { z } from "zod";
+import { requireAdminWithRateLimit, validationError, rateLimitError } from "@/lib/admin";
 import { getAllRateLimitConfigs, setRateLimitConfig } from "@/lib/rate-limit-config";
 import { logAudit } from "@/lib/audit";
 
-export async function GET() {
-  const auth = await requireAdmin();
+const PostRateLimitBodySchema = z.object({
+  route: z.string().min(1).max(200).regex(/^\//, "Route must start with /"),
+  windowMs: z.number().int().min(1000).max(86400000),
+  maxRequests: z.number().int().min(1).max(100000),
+  description: z.string().max(500).optional(),
+});
+
+export async function GET(req: Request) {
+  const auth = await requireAdminWithRateLimit(req);
+  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const configs = await getAllRateLimitConfigs();
@@ -12,16 +21,17 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdminWithRateLimit(req);
+  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
-  const { route, windowMs, maxRequests, description } = body;
-
-  if (!route || typeof windowMs !== "number" || typeof maxRequests !== "number") {
-    return NextResponse.json({ error: "route, windowMs, maxRequests required" }, { status: 400 });
+  const parseResult = PostRateLimitBodySchema.safeParse(body);
+  if (!parseResult.success) {
+    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
   }
 
+  const { route, windowMs, maxRequests, description } = parseResult.data;
   const updated = await setRateLimitConfig({ route, windowMs, maxRequests, description });
 
   await logAudit({

@@ -57,6 +57,21 @@ git reset --hard origin/main
 git stash pop >/dev/null 2>&1 || true
 log_action "PREVENT:git_pull" "repo" "Latest code pulled" "Git fetch + reset to origin/main" "success" "Prevent" "Search"
 
+# ===== PHASE 0.5: SECURITY SCAN (DETECT) =====
+log_action "DETECT:security_scan" "security-scan.sh" "Running security scan before build" "Prevent deployment if critical vulnerabilities or missing env vars found" "pending" "Detect" "Test"
+if [ -f "$REPO_DIR/scripts/security-scan.sh" ]; then
+  if bash "$REPO_DIR/scripts/security-scan.sh" 2>&1 | tee -a "$LOG_FILE"; then
+    log_action "DETECT:security_scan" "security-scan.sh" "Security scan passed" "No critical issues found" "success" "Detect" "Test"
+  else
+    log_action "DETECT:security_scan" "security-scan.sh" "Security scan FAILED" "Critical vulnerabilities or missing env vars detected" "failure" "Detect" "Test"
+    log_action "PREVENT:deployment_start" "deploy-bluegreen.sh" "Deployment ABORTED" "Security scan failed — fix issues before deploying" "failure" "Prevent" "Test"
+    exit 1
+  fi
+else
+  log "⚠ Security scan script not found — skipping"
+  log_action "DETECT:security_scan" "security-scan.sh" "Script not found" "Skipping security scan" "partial" "Detect" "Test"
+fi
+
 # ===== PHASE 1: MONITORING STACK (DETECT + VERIFY) =====
 log_action "DETECT:monitoring_deploy" "monitoring_stack" "Deploy monitoring stack with new services" "Wazuh Indexer, Dashboard, Exporter need deployment" "pending" "Detect" "Test"
 

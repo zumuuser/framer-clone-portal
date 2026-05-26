@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin";
+import { requireAdminWithRateLimit, rateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
-  const auth = await requireAdmin();
+export async function GET(req: Request) {
+  const auth = await requireAdminWithRateLimit(req);
+  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const checks = {
