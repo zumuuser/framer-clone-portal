@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdminWithRateLimit, validationError, rateLimitError } from "@/lib/admin";
+import { requireAdminWithRateLimit, validationError, rateLimitError, isRateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 const UserIdSchema = z.object({
@@ -9,13 +9,13 @@ const UserIdSchema = z.object({
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminWithRateLimit(_req);
-  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
+  if (auth.retryAfterMs) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { id } = await params;
   const parseResult = UserIdSchema.safeParse({ id });
   if (!parseResult.success) {
-    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
+    return validationError(parseResult.error.issues.map((issue) => ({ path: issue.path, message: issue.message })));
   }
 
   const user = await prisma.user.findUnique({

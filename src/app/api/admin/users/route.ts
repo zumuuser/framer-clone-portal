@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdminWithRateLimit, validationError, rateLimitError } from "@/lib/admin";
+import { requireAdminWithRateLimit, validationError, rateLimitError, isRateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 
@@ -23,13 +23,13 @@ const PatchUserBodySchema = z.object({
 
 export async function GET(req: Request) {
   const auth = await requireAdminWithRateLimit(req);
-  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
+  if (auth.retryAfterMs) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { searchParams } = new URL(req.url);
   const parseResult = GetUsersQuerySchema.safeParse(Object.fromEntries(searchParams));
   if (!parseResult.success) {
-    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
+    return validationError(parseResult.error.issues.map((issue) => ({ path: issue.path, message: issue.message })));
   }
 
   const { page, limit, search, status, role } = parseResult.data;
@@ -72,13 +72,13 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   const auth = await requireAdminWithRateLimit(req);
-  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
+  if (auth.retryAfterMs) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
   const parseResult = PatchUserBodySchema.safeParse(body);
   if (!parseResult.success) {
-    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
+    return validationError(parseResult.error.issues.map((issue) => ({ path: issue.path, message: issue.message })));
   }
 
   const { userId, role, status, projectLimit } = parseResult.data;

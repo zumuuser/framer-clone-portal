@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdminWithRateLimit, validationError, rateLimitError } from "@/lib/admin";
+import { requireAdminWithRateLimit, validationError, rateLimitError, isRateLimitError } from "@/lib/admin";
 import { getAllRateLimitConfigs, setRateLimitConfig } from "@/lib/rate-limit-config";
 import { logAudit } from "@/lib/audit";
 
@@ -13,7 +13,7 @@ const PostRateLimitBodySchema = z.object({
 
 export async function GET(req: Request) {
   const auth = await requireAdminWithRateLimit(req);
-  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
+  if (auth.retryAfterMs) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const configs = await getAllRateLimitConfigs();
@@ -22,13 +22,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const auth = await requireAdminWithRateLimit(req);
-  if ("retryAfterMs" in auth) return rateLimitError(auth.retryAfterMs);
+  if (auth.retryAfterMs) return rateLimitError(auth.retryAfterMs);
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
   const parseResult = PostRateLimitBodySchema.safeParse(body);
   if (!parseResult.success) {
-    return validationError(parseResult.error.errors.map((e) => ({ path: e.path, message: e.message })));
+    return validationError(parseResult.error.issues.map((issue) => ({ path: issue.path, message: issue.message })));
   }
 
   const { route, windowMs, maxRequests, description } = parseResult.data;

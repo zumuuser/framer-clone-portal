@@ -31,11 +31,7 @@ export async function requireAdminWithRateLimit(req: Request) {
   });
 
   if (!rateLimit.allowed) {
-    return {
-      error: "Rate limit exceeded",
-      status: 429,
-      retryAfterMs: rateLimit.retryAfterMs,
-    };
+    return { error: "Rate limit exceeded", status: 429, retryAfterMs: rateLimit.retryAfterMs };
   }
 
   const session = (await getServerSession(authOptions)) as Session | null;
@@ -59,10 +55,10 @@ export function adminJson(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-/** Helper to return Zod validation errors */
-export function validationError(errors: Array<{ path: (string | number)[]; message: string }>) {
+/** Helper to return Zod validation errors (Zod v4 compatible) */
+export function validationError(issues: Array<{ path: PropertyKey[]; message: string }>) {
   return NextResponse.json(
-    { error: "Validation failed", errors },
+    { error: "Validation failed", issues },
     { status: 400 }
   );
 }
@@ -76,4 +72,9 @@ export function rateLimitError(retryAfterMs: number) {
       headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) },
     }
   );
+}
+
+/** Type guard to check if auth result is a rate limit error */
+export function isRateLimitError(auth: { retryAfterMs?: number }): auth is { retryAfterMs: number } {
+  return auth.retryAfterMs !== undefined;
 }
