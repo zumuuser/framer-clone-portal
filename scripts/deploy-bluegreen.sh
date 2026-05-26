@@ -178,7 +178,7 @@ if [ -n "$INDEXER_CONTAINER" ]; then
   if ! docker exec "$INDEXER_CONTAINER" curl -k -s -u admin:admin https://localhost:9200/_cluster/health 2>/dev/null | grep -q '"status"'; then
     log "Initializing Wazuh Indexer security..."
     docker exec "$INDEXER_CONTAINER" bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
-      -cd /usr/share/wazuh-indexer/plugins/opensearch-security/securityconfig \
+      -cd /usr/share/wazuh-indexer/opensearch-security \
       -icl -nhnv \
       -cacert /usr/share/wazuh-indexer/certs/ca.crt \
       -cert /usr/share/wazuh-indexer/certs/admin.crt \

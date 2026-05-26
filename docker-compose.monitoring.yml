@@ -164,7 +164,7 @@ services:
     image: wazuh/wazuh-indexer:4.8.0
     hostname: wazuh-indexer
     environment:
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g
       - bootstrap.memory_lock=true
       - discovery.type=single-node
       - node.name=wazuh-indexer
@@ -181,7 +181,9 @@ services:
       - wazuh-indexer-data:/var/lib/wazuh-indexer
       - /var/lib/dokploy/applications/framerclone-portal/monitoring/wazuh/certs:/usr/share/wazuh-indexer/certs:ro
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases:
+          - wazuh.indexer
     deploy:
       replicas: 1
       placement:
@@ -220,6 +222,8 @@ services:
         - "traefik.http.routers.wazuh.middlewares=wazuh-auth"
         - "traefik.http.middlewares.wazuh-auth.basicauth.users=admin:$$2b$$10$$YLl3zfA8NcGLo72IUnhvV.KKfaY/Czxja9pQ91sgr0SwnYfDE82dC"
         - "traefik.http.services.wazuh.loadbalancer.server.port=5601"
+        - "traefik.http.services.wazuh.loadbalancer.server.scheme=https"
+        - "traefik.http.services.wazuh.loadbalancer.serversTransport=wazuh-insecure@file"
 
   wazuh-exporter:
     image: python:3.11-slim

@@ -16,6 +16,7 @@ interface UserDetail {
   lastIp: string | null;
   createdAt: string;
   updatedAt: string;
+  projectLimit: number;
   projects: {
     id: string;
     name: string;
@@ -69,6 +70,7 @@ export default function UserDetailPage() {
             <div className="flex justify-between"><span className="text-gray-400">Last IP</span><span className="text-gray-200">{user.lastIp || "—"}</span></div>
             <div className="flex justify-between"><span className="text-gray-400">Joined</span><span className="text-gray-200">{new Date(user.createdAt).toLocaleString()}</span></div>
             <div className="flex justify-between"><span className="text-gray-400">Updated</span><span className="text-gray-200">{new Date(user.updatedAt).toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Project Limit</span><span className="text-gray-200">{user.projectLimit}</span></div>
           </div>
         </div>
 

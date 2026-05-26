@@ -32,6 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       lastIp: true,
       createdAt: true,
       updatedAt: true,
+      projectLimit: true,
       projects: {
         select: {
           id: true,
