@@ -40,6 +40,7 @@ export async function GET(req: Request) {
         lastLoginAt: true,
         lastIp: true,
         createdAt: true,
+        projectLimit: true,
         _count: { select: { projects: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -55,7 +56,7 @@ export async function PATCH(req: Request) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
-  const { userId, role, status } = body;
+  const { userId, role, status, projectLimit } = body;
 
   if (!userId) {
     return NextResponse.json({ error: "userId required" }, { status: 400 });
@@ -64,6 +65,7 @@ export async function PATCH(req: Request) {
   const updateData: any = {};
   if (role !== undefined) updateData.role = role;
   if (status !== undefined) updateData.status = status;
+  if (projectLimit !== undefined) updateData.projectLimit = parseInt(projectLimit) || 10;
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
@@ -72,7 +74,7 @@ export async function PATCH(req: Request) {
   const updated = await prisma.user.update({
     where: { id: userId },
     data: updateData,
-    select: { id: true, email: true, role: true, status: true },
+    select: { id: true, email: true, role: true, status: true, projectLimit: true },
   });
 
   await logAudit({

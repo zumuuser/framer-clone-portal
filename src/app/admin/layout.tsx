@@ -46,6 +46,12 @@ export default async function AdminLayout({
               className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
             >
               Activity Log
+            <Link
+              href="/admin/rate-limits"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              Rate Limits
+            </Link>
             </Link>
             <Link
               href="/admin/security"

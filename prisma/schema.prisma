@@ -48,6 +48,7 @@ model User {
   lastIp        String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+  projectLimit  Int        @default(10)
   accounts      Account[]
   sessions      Session[]
   projects      Project[]
