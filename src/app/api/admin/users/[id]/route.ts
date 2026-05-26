@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { z } from "zod";
 import { requireAdminWithRateLimit, validationError, rateLimitError, isRateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
@@ -56,6 +57,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
+
+  await logAudit({
+    userId: auth.user?.id,
+    action: "user.view",
+    resource: `user:${id}`,
+    metadata: { userId: id },
+    ip: _req.headers.get("x-forwarded-for") || undefined,
+  });
 
   return NextResponse.json(user);
 }

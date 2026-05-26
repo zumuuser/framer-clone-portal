@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { z } from "zod";
 import { requireAdminWithRateLimit, validationError, rateLimitError, isRateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +40,14 @@ export async function GET(req: Request) {
     }),
     prisma.auditLog.count({ where }),
   ]);
+
+  await logAudit({
+    userId: auth.user?.id,
+    action: "auditLog.view",
+    resource: "auditLog",
+    metadata: { limit, offset, acssLayer, stopStep, result },
+    ip: req.headers.get("x-forwarded-for") || undefined,
+  });
 
   return NextResponse.json({ logs, total });
 }

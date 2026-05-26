@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { requireAdminWithRateLimit, rateLimitError, isRateLimitError } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
@@ -31,6 +32,14 @@ export async function GET(req: Request) {
       prisma.project.count(),
       prisma.syncLog.count(),
     ]);
+
+  await logAudit({
+    userId: auth.user?.id,
+    action: "security.view",
+    resource: "security",
+    metadata: { checks },
+    ip: req.headers.get("x-forwarded-for") || undefined,
+  });
 
   return NextResponse.json({
     checks,

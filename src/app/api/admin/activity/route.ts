@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminWithRateLimit, validationError, rateLimitError, isRateLimitError } from "@/lib/admin";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 const ActivityQuerySchema = z.object({
@@ -39,6 +40,14 @@ export async function GET(req: Request) {
     }),
     prisma.auditLog.count({ where }),
   ]);
+
+  await logAudit({
+    userId: auth.user?.id,
+    action: "activity.view",
+    resource: "activity",
+    metadata: { page, limit, action, userId },
+    ip: req.headers.get("x-forwarded-for") || undefined,
+  });
 
   return NextResponse.json({ logs, total, page, limit });
 }

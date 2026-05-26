@@ -67,6 +67,14 @@ export async function GET(req: Request) {
     prisma.user.count({ where }),
   ]);
 
+  await logAudit({
+    userId: auth.user?.id,
+    action: "user.list",
+    resource: "users",
+    metadata: { page, limit, search, status, role },
+    ip: req.headers.get("x-forwarded-for") || undefined,
+  });
+
   return NextResponse.json({ users, total, page, limit });
 }
 

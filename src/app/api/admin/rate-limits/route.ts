@@ -17,6 +17,15 @@ export async function GET(req: Request) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const configs = await getAllRateLimitConfigs();
+
+  await logAudit({
+    userId: auth.user?.id,
+    action: "rateLimit.list",
+    resource: "rateLimits",
+    metadata: { count: configs.length },
+    ip: req.headers.get("x-forwarded-for") || undefined,
+  });
+
   return NextResponse.json(configs);
 }
 
