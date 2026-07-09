@@ -126,7 +126,7 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
     const discoveredUrls = new Set<string>();
     discoveredUrls.add(url);
 
-    const links = await page.evaluate((baseDomain) => {
+    const links = await page.evaluate((baseDomain: string) => {
       const hrefs: string[] = [];
       document.querySelectorAll("a[href]").forEach((a) => {
         const href = (a as HTMLAnchorElement).href;
