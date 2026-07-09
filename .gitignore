@@ -47,6 +47,7 @@ next-env.d.ts
 *.db
 *.db-journal
 .env
+!prisma/template.db
 
 # Agent session files
 PROJECT_MEMORY.md

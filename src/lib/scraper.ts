@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { chromium as playwright } from "playwright-core";
 import { createServer } from "http";
 import { readFileSync, existsSync, statSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { join, dirname, extname } from "path";
@@ -93,7 +93,27 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
   const workDir = join("/tmp", `scrape-${Date.now()}`);
   mkdirSync(workDir, { recursive: true });
 
-  const browser = await chromium.launch();
+  let browser;
+  if (process.env.VERCEL) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const chromium = require("@sparticuz/chromium");
+    if (typeof chromium.setGraphicsMode === 'function') {
+      chromium.setGraphicsMode(false);
+    }
+    browser = await playwright.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  } else {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { chromium: localChromium } = require("playwright");
+      browser = await localChromium.launch();
+    } catch {
+      browser = await playwright.launch();
+    }
+  }
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
 

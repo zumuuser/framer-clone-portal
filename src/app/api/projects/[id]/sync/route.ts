@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+export const maxDuration = 60;
 import { getServerSessionWithToken } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getOctokit, createTreeAndCommit } from "@/lib/github";
