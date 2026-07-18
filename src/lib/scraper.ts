@@ -145,12 +145,28 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
       discoveredUrls.add(new URL(pathname, url).toString());
     }
 
-    // 3. Scrape each page
+    // 3. Scrape each page (deduped, parallel tabs to stay within serverless timeouts)
     const pageFiles: ScrapedFile[] = [];
     const assetUrls = new Set<string>();
     const assetPathMap = new Map<string, string>(); // url -> local path
 
-    for (const pageUrl of discoveredUrls) {
+    // Normalize + dedupe URLs ("/about", "/about/", "/about." are the same page)
+    const normalizePageKey = (u: string) => {
+      const p = new URL(u).pathname.replace(/\/+$/, "").replace(/\.+$/, "").toLowerCase();
+      return p === "" ? "/" : p;
+    };
+    const seenKeys = new Set<string>();
+    const urlsToScrape: string[] = [];
+    for (const u of discoveredUrls) {
+      const key = normalizePageKey(u);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      urlsToScrape.push(u);
+    }
+    const MAX_PAGES = 25;
+    const queue = urlsToScrape.slice(0, MAX_PAGES);
+
+    const scrapeOne = async (page: import("playwright-core").Page, pageUrl: string) => {
       await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 15000 });
       await page.waitForTimeout(1000);
 
@@ -158,8 +174,6 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
       const fileName = pathname === "/"
         ? "index.html"
         : pathname.replace(/^\//, "").replace(/\/$/, "") + (pathname.includes(".") ? "" : ".html");
-      const htmlPath = join(workDir, fileName);
-      mkdirSync(dirname(htmlPath), { recursive: true });
 
       let html = await page.content();
       html = fixSrcset(html);
@@ -181,7 +195,11 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
           urls.push((s as HTMLScriptElement).src);
         });
         document.querySelectorAll("link[href]").forEach((l) => {
-          urls.push((l as HTMLLinkElement).href);
+          // Only real assets — skip prefetch/canonical/preconnect page links
+          const href = (l as HTMLLinkElement).href;
+          try {
+            if (/\.[a-z0-9]+$/i.test(new URL(href).pathname)) urls.push(href);
+          } catch {}
         });
         for (const sheet of Array.from(document.styleSheets)) {
           try {
@@ -203,7 +221,7 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
       for (const assetUrl of pageAssets) {
         try {
           const u = new URL(assetUrl);
-          if (u.origin === baseOrigin) {
+          if (u.origin === baseOrigin && /\.[a-z0-9]+$/i.test(u.pathname)) {
             assetUrls.add(assetUrl);
             assetPathMap.set(assetUrl, u.pathname.replace(/^\//, ""));
           }
@@ -213,9 +231,31 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
       // Rewrite HTML to use relative asset paths
       html = rewriteHtmlAssets(html, baseOrigin);
 
+      const htmlPath = join(workDir, fileName);
+      mkdirSync(dirname(htmlPath), { recursive: true });
       writeFileSync(htmlPath, html, "utf-8");
       pageFiles.push({ path: fileName, content: Buffer.from(html, "utf-8") });
-    }
+    };
+
+    const CONCURRENCY = 4;
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+        const tab = await context.newPage();
+        try {
+          while (cursor < queue.length) {
+            const pageUrl = queue[cursor++];
+            try {
+              await scrapeOne(tab, pageUrl);
+            } catch (pageErr) {
+              console.warn(`Page scrape failed: ${pageUrl}`, pageErr);
+            }
+          }
+        } finally {
+          await tab.close();
+        }
+      })
+    );
 
     // 4. Download all discovered assets in parallel batches (faster on serverless)
     const assetFiles: ScrapedFile[] = [];

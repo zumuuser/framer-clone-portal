@@ -45,9 +45,22 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Concurrency lock: prevent double-sync
+  // Concurrency lock: prevent double-sync, but recover from stale locks
+  // (a hard function timeout kills the route before it can reset the status)
   if (project.status === "syncing") {
-    return NextResponse.json({ error: "Sync already in progress" }, { status: 409 });
+    const lockAgeMs = Date.now() - new Date(project.updatedAt).getTime();
+    if (lockAgeMs < 90_000) {
+      return NextResponse.json({ error: "Sync already in progress" }, { status: 409 });
+    }
+    // Stale lock — clean up orphaned log entries and take over
+    await prisma.syncLog.updateMany({
+      where: { projectId: project.id, status: "running" },
+      data: {
+        status: "error",
+        errorMessage: "Sync was interrupted (function timeout)",
+        completedAt: new Date(),
+      },
+    });
   }
 
   // Create sync log entry
