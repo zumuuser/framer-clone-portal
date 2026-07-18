@@ -119,8 +119,8 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
 
   try {
     // 1. Navigate and wait for full hydration
-    await page.goto(url, { waitUntil: "networkidle" });
-    await page.waitForTimeout(3000);
+    await page.goto(url, { waitUntil: "networkidle", timeout: 15000 });
+    await page.waitForTimeout(1500);
 
     // 2. Discover all pages
     const discoveredUrls = new Set<string>();
@@ -150,8 +150,8 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
     const assetPathMap = new Map<string, string>(); // url -> local path
 
     for (const pageUrl of discoveredUrls) {
-      await page.goto(pageUrl, { waitUntil: "networkidle" });
-      await page.waitForTimeout(2000);
+      await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 15000 });
+      await page.waitForTimeout(1000);
 
       const pathname = new URL(pageUrl).pathname;
       const fileName = pathname === "/"
@@ -216,28 +216,34 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
       pageFiles.push({ path: fileName, content: Buffer.from(html, "utf-8") });
     }
 
-    // 4. Download all discovered assets using request API (reliable for binary)
+    // 4. Download all discovered assets in parallel batches (faster on serverless)
     const assetFiles: ScrapedFile[] = [];
-    for (const assetUrl of assetUrls) {
-      try {
-        const response = await page.request.get(assetUrl);
-        if (!response.ok()) {
-          console.warn(`Asset download failed ${response.status()}: ${assetUrl}`);
-          continue;
+    const assetUrlArray = Array.from(assetUrls);
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < assetUrlArray.length; i += BATCH_SIZE) {
+      const batch = assetUrlArray.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (assetUrl) => {
+          const response = await page.request.get(assetUrl, { timeout: 8000 });
+          if (!response.ok()) {
+            console.warn(`Asset download failed ${response.status()}: ${assetUrl}`);
+            return null;
+          }
+          const buffer = await response.body();
+          if (!buffer || buffer.length === 0) return null;
+
+          const u = new URL(assetUrl);
+          const assetPath = u.pathname.replace(/^\//, "");
+          const assetFilePath = join(workDir, assetPath);
+          mkdirSync(dirname(assetFilePath), { recursive: true });
+          writeFileSync(assetFilePath, buffer);
+          return { path: assetPath, content: buffer } as ScrapedFile;
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) {
+          assetFiles.push(r.value);
         }
-
-        const buffer = await response.body();
-        if (!buffer || buffer.length === 0) continue;
-
-        const u = new URL(assetUrl);
-        const assetPath = u.pathname.replace(/^\//, "");
-        const assetFilePath = join(workDir, assetPath);
-        mkdirSync(dirname(assetFilePath), { recursive: true });
-        writeFileSync(assetFilePath, buffer);
-
-        assetFiles.push({ path: assetPath, content: buffer });
-      } catch (err) {
-        console.warn(`Failed to download asset: ${assetUrl}`, err);
       }
     }
 

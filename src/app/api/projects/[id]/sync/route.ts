@@ -151,30 +151,49 @@ export async function POST(
     });
   } catch (err: unknown) {
     console.error("Sync failed:", err);
-    const message = err instanceof Error ? err.message : String(err);
+    const rawMessage = err instanceof Error ? err.message : String(err);
 
-    await prisma.syncLog.update({
-      where: { id: syncLog.id },
-      data: {
-        status: "error",
-        errorMessage: message,
-        completedAt: new Date(),
-      },
-    });
+    // Detect common failure modes and provide actionable messages
+    let userMessage = rawMessage;
+    let statusCode = 500;
 
-    await prisma.project.update({
-      where: { id: project.id },
-      data: { status: "error" },
-    });
-
-    // Security validation failures are client errors (400), not server errors
     if (err instanceof SecurityError) {
-      return NextResponse.json({ error: "Security check failed", message }, { status: 400 });
+      userMessage = `Security check failed: ${rawMessage}`;
+      statusCode = 400;
+    } else if (rawMessage.includes("FUNCTION_INVOCATION_TIMEOUT") || rawMessage.includes("Task timed out")) {
+      userMessage = "Sync timed out — the site has too many pages/assets for the current server plan. Try a simpler site or upgrade to Vercel Pro for longer timeouts.";
+      statusCode = 504;
+    } else if (rawMessage.includes("browserType.launch") || rawMessage.includes("executable") || rawMessage.includes("Chromium")) {
+      userMessage = "Browser engine failed to start. This may be a temporary serverless issue — please try again in a moment.";
+    } else if (rawMessage.includes("Bad credentials") || rawMessage.includes("401")) {
+      userMessage = "GitHub authentication failed. Please sign out and sign back in to refresh your access token.";
+      statusCode = 401;
+    } else if (rawMessage.includes("Not Found") && rawMessage.includes("404")) {
+      userMessage = "GitHub repository not found. Make sure the repo exists and you have write access to it.";
+      statusCode = 404;
+    }
+
+    try {
+      await prisma.syncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: "error",
+          errorMessage: userMessage,
+          completedAt: new Date(),
+        },
+      });
+
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { status: "error" },
+      });
+    } catch (dbErr) {
+      console.error("Failed to update sync log after error:", dbErr);
     }
 
     return NextResponse.json(
-      { error: "Sync failed", message },
-      { status: 500 }
+      { error: "Sync failed", message: userMessage },
+      { status: statusCode }
     );
   }
 }
