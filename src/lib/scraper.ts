@@ -96,8 +96,9 @@ export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
   let browser;
   if (process.env.VERCEL) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const chromium = require("@sparticuz/chromium");
-    if (typeof chromium.setGraphicsMode === 'function') {
+    const chromiumModule = require("@sparticuz/chromium");
+    const chromium = chromiumModule.default ?? chromiumModule;
+    if (typeof chromium.setGraphicsMode === "function") {
       chromium.setGraphicsMode(false);
     }
     browser = await playwright.launch({
