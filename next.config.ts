@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@sparticuz/chromium", "playwright-core"],
+  outputFileTracingIncludes: {
+    "/api/projects/*/sync": [
+      "./node_modules/playwright-core/**/*",
+      "./node_modules/@sparticuz/chromium/**/*",
+    ],
+  },
   async headers() {
     return [
       {
