@@ -59,7 +59,7 @@ export default function Home() {
         />
         <FeatureCard
           title="Auto-Deploy"
-          description="Connect Cloudflare Pages with one-click SSO. Own your code and ship on the free commercial-friendly plan."
+          description="Connect Cloudflare Pages with an API token. Own your code and ship on the free commercial-friendly plan."
         />
       </div>
     </div>

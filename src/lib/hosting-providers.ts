@@ -23,20 +23,16 @@ export const HOSTING_PROVIDERS: Record<
     recommended: true,
     commercialOnFree: true,
     freePlanNote:
-      "Free plan allows commercial projects with generous bandwidth. Default for client work and production sites.",
-    connectLabel: "Connect Cloudflare",
-    docsUrl: "https://developers.cloudflare.com/pages/",
+      "Connect with an API token (Pages Edit + Account Settings Read). Free plan allows commercial projects.",
+    connectLabel: "Connect with API token",
+    docsUrl:
+      "https://developers.cloudflare.com/fundamentals/api/get-started/create-token/",
   },
 };
 
+/** API-token connect is always available (no OAuth env required). */
 export function providerConfigured(provider: HostingProviderId): boolean {
-  if (provider === "cloudflare") {
-    return !!(
-      process.env.CLOUDFLARE_OAUTH_CLIENT_ID &&
-      process.env.CLOUDFLARE_OAUTH_CLIENT_SECRET
-    );
-  }
-  return false;
+  return provider === "cloudflare";
 }
 
 export function baseUrlFromRequest(origin: string): string {

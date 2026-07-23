@@ -3,9 +3,15 @@
 import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+/** Cloudflare dashboard — create API token (user pastes into our form) */
+const CF_API_TOKENS_URL = "https://dash.cloudflare.com/profile/api-tokens";
+const CF_CREATE_TOKEN_DOCS =
+  "https://developers.cloudflare.com/fundamentals/api/get-started/create-token/";
 
 interface Project {
   id: string;
@@ -79,6 +85,9 @@ function ProjectDetailInner() {
   >([]);
   const [hostingSummary, setHostingSummary] = useState("");
   const [hostError, setHostError] = useState("");
+  const [cfTokenInput, setCfTokenInput] = useState("");
+  const [cfConnecting, setCfConnecting] = useState(false);
+  const [cfConnectMsg, setCfConnectMsg] = useState("");
 
   const isFirstTime = !project?.lastSyncAt;
   const hasSuccessfulSync =
@@ -156,16 +165,50 @@ function ProjectDetailInner() {
     }
   }
 
-  function connectProvider(provider: HostTarget) {
-    if (provider === "none") return;
-    window.location.href = `/api/hosting/${provider}/auth?returnTo=/projects/${id}`;
+  async function connectCloudflareToken() {
+    const apiToken = cfTokenInput.trim();
+    if (apiToken.length < 20) {
+      setHostError("Paste a full Cloudflare API token (looks long — not the Global API Key).");
+      return;
+    }
+    setCfConnecting(true);
+    setHostError("");
+    setCfConnectMsg("");
+    try {
+      const res = await fetch("/api/cloudflare/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setHostError(
+          data.message ||
+            data.error ||
+            "Could not connect token. Check permissions: Pages Edit + Account Settings Read."
+        );
+        return;
+      }
+      setCfTokenInput("");
+      setCfConnectMsg(
+        `Connected${data.accountName ? ` · ${data.accountName}` : ""}. You can deploy on Sync.`
+      );
+      setHostTarget("cloudflare");
+      await fetchHostingStatus();
+    } catch {
+      setHostError("Network error while connecting Cloudflare.");
+    } finally {
+      setCfConnecting(false);
+    }
   }
 
   async function disconnectProvider(provider: HostTarget) {
     if (provider === "none") return;
-    if (!confirm(`Disconnect ${provider}?`)) return;
+    if (!confirm("Disconnect Cloudflare from FramerClone? Existing Pages sites stay on Cloudflare."))
+      return;
     await fetch(`/api/hosting/${provider}/disconnect`, { method: "POST" });
     if (hostTarget === provider) setHostTarget("none");
+    setCfConnectMsg("");
     await fetchHostingStatus();
   }
 
@@ -325,94 +368,131 @@ function ProjectDetailInner() {
         </div>
       </div>
 
-      {/* Hosting providers — SSO preferred */}
+      {/* Cloudflare Pages — API token connect */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Hosting (optional)</CardTitle>
+          <CardTitle className="text-lg">Cloudflare Pages (optional)</CardTitle>
           <CardDescription>
-            Sync always updates GitHub. Optionally deploy the same export with
-            one-click login (SSO) — no API keys needed for end users.
+            Sync always updates GitHub. Connect a Cloudflare API token if you
+            also want a live deploy on Pages (commercial use OK on free).
             {hostingSummary ? ` ${hostingSummary}` : ""}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-3">
-            {(hostingProviders.length
-              ? hostingProviders
-              : [
-                  {
-                    id: "cloudflare" as HostTarget,
-                    name: "Cloudflare Pages",
-                    recommended: true,
-                    freePlanNote:
-                      "Free plan allows commercial projects. Recommended default.",
-                    commercialOnFree: true,
-                    connectLabel: "Connect Cloudflare",
-                    docsUrl: "https://developers.cloudflare.com/pages/",
-                    oauthConfigured: false,
-                    connected: false,
-                    accountName: null,
-                    accountId: null,
-                  },
-                ]
-            ).map((p) => (
-              <div
-                key={p.id}
-                className="border border-border p-3 space-y-2"
-              >
+          {(() => {
+            const cf =
+              hostingProviders.find((p) => p.id === "cloudflare") || null;
+            const connected = !!cf?.connected;
+            return (
+              <div className="border border-border p-4 space-y-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="space-y-1 min-w-0">
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold">{p.name}</span>
-                      {p.recommended && (
-                        <Badge variant="secondary">Recommended</Badge>
-                      )}
-                      <Badge variant={p.connected ? "secondary" : "outline"}>
-                        {p.connected ? "Connected" : "Not connected"}
+                      <span className="font-semibold">Cloudflare Pages</span>
+                      <Badge variant="secondary">Recommended</Badge>
+                      <Badge variant={connected ? "secondary" : "outline"}>
+                        {connected ? "Connected" : "Not connected"}
                       </Badge>
-                      {!p.commercialOnFree && (
-                        <Badge variant="outline">Free ≠ commercial</Badge>
-                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {p.freePlanNote}
-                    </p>
-                    {p.connected && p.accountName && (
+                    {connected && cf?.accountName && (
                       <p className="text-xs text-muted-foreground">
-                        Account: {p.accountName}
+                        Account: {cf.accountName}
+                        {cf.accountId ? ` · ${cf.accountId}` : ""}
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    {p.connected ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => disconnectProvider(p.id)}
-                      >
-                        Disconnect
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => connectProvider(p.id)}
-                        disabled={!p.oauthConfigured}
-                        title={
-                          p.oauthConfigured
-                            ? p.connectLabel
-                            : "SSO not configured on server yet"
-                        }
-                      >
-                        {p.oauthConfigured
-                          ? p.connectLabel
-                          : "SSO setup needed"}
-                      </Button>
-                    )}
-                  </div>
+                  {connected && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => disconnectProvider("cloudflare")}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
                 </div>
+
+                {!connected && (
+                  <div className="space-y-3 text-sm">
+                    <p className="font-medium">Create a token (2 minutes)</p>
+                    <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+                      <li>
+                        Open{" "}
+                        <a
+                          href={CF_API_TOKENS_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-foreground underline underline-offset-2"
+                        >
+                          Cloudflare API Tokens
+                        </a>{" "}
+                        (login if needed).
+                      </li>
+                      <li>
+                        Click <strong className="text-foreground">Create Token</strong>{" "}
+                        → <strong className="text-foreground">Create Custom Token</strong>.
+                      </li>
+                      <li>
+                        Permissions — add only these two:
+                        <ul className="list-disc list-inside mt-1 ml-2 space-y-0.5">
+                          <li>
+                            <strong className="text-foreground">Account</strong> →{" "}
+                            <strong className="text-foreground">Cloudflare Pages</strong>{" "}
+                            → <strong className="text-foreground">Edit</strong>
+                          </li>
+                          <li>
+                            <strong className="text-foreground">Account</strong> →{" "}
+                            <strong className="text-foreground">Account Settings</strong>{" "}
+                            → <strong className="text-foreground">Read</strong>
+                          </li>
+                        </ul>
+                      </li>
+                      <li>
+                        Account resources: include your account → Continue →{" "}
+                        <strong className="text-foreground">Create Token</strong>.
+                      </li>
+                      <li>Copy the token once, paste it below, then Connect.</li>
+                    </ol>
+                    <p className="text-xs text-muted-foreground">
+                      Official guide:{" "}
+                      <a
+                        href={CF_CREATE_TOKEN_DOCS}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline underline-offset-2 text-foreground"
+                      >
+                        Create an API token
+                      </a>
+                      . Use an API Token — not the Global API Key.
+                    </p>
+
+                    <div className="space-y-2 pt-1">
+                      <Label htmlFor="cf-api-token">API token</Label>
+                      <Input
+                        id="cf-api-token"
+                        type="password"
+                        autoComplete="off"
+                        placeholder="Paste token from Cloudflare…"
+                        value={cfTokenInput}
+                        onChange={(e) => setCfTokenInput(e.target.value)}
+                        disabled={cfConnecting}
+                      />
+                      <Button
+                        onClick={connectCloudflareToken}
+                        disabled={cfConnecting || cfTokenInput.trim().length < 20}
+                      >
+                        {cfConnecting ? "Connecting…" : "Connect Cloudflare"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {cfConnectMsg && (
+                  <p className="text-sm text-muted-foreground">{cfConnectMsg}</p>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           <div className="space-y-2 border-t border-border pt-3">
             <Label>When I sync, also deploy to</Label>
@@ -423,13 +503,12 @@ function ProjectDetailInner() {
             >
               <option value="none">GitHub only (no host deploy)</option>
               <option value="cloudflare">
-                Cloudflare Pages (recommended — commercial OK on free)
+                Cloudflare Pages (needs token connected above)
               </option>
             </select>
             <p className="text-xs text-muted-foreground">
-              Connect Cloudflare first with one-click SSO. Without a connection,
-              Sync only updates GitHub. Custom domains are configured in the
-              Cloudflare dashboard after deploy.
+              Without a connected token, Sync only updates GitHub. Custom domains
+              are set in the Cloudflare dashboard after the first deploy.
             </p>
           </div>
 

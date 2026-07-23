@@ -27,7 +27,8 @@ export async function getUserCloudflareAuth(
     return {
       ok: false,
       reason: "not_connected",
-      message: "Connect Cloudflare first to host your site.",
+      message:
+        "Connect Cloudflare with an API token first (Pages Edit + Account Settings Read).",
     };
   }
 

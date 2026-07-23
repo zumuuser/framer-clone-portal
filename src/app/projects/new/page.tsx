@@ -296,7 +296,7 @@ export default function NewProject() {
                 </select>
                 <p className="text-xs text-muted-foreground">
                   Sync always pushes to GitHub. On the project page, connect
-                  Cloudflare with one-click SSO if you also want a live Pages
+                  Cloudflare with an API token if you also want a live Pages
                   deploy.
                 </p>
               </div>

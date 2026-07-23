@@ -41,6 +41,6 @@ export async function GET() {
     providers: status,
     recommended: "cloudflare" as const,
     summary:
-      "Deploy to Cloudflare Pages after syncing to GitHub. Free plan supports commercial sites.",
+      "Connect a Cloudflare API token (Pages Edit + Account Settings Read), then deploy on Sync.",
   });
 }

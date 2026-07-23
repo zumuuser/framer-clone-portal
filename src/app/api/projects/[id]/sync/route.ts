@@ -28,7 +28,7 @@ function rateLimitResponse(retryAfterMs: number) {
  *   hostTarget?: "none" | "cloudflare"
  *   deployToCloudflare?: boolean  // legacy alias for hostTarget=cloudflare
  * }
- * GitHub always works. Cloudflare deploy only if target set and SSO connected.
+ * GitHub always works. Cloudflare deploy only if target set and API token connected.
  */
 export async function POST(
   req: NextRequest,
