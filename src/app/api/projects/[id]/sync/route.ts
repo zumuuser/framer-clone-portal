@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-export const maxDuration = 60;
+export const maxDuration = 300;
 import { getServerSessionWithToken } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getOctokit, createTreeAndCommit } from "@/lib/github";
 import { scrapeFramerSite } from "@/lib/scraper";
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 import { guardedScrape, SecurityError } from "@/lib/security";
+import { getUserHostingToken } from "@/lib/hosting-user";
+import {
+  deployPagesFiles,
+  getOrCreatePagesProject,
+  slugifyProjectName,
+} from "@/lib/cloudflare";
+import { deployToVercel } from "@/lib/vercel-hosting";
+import { deployToNetlify } from "@/lib/netlify-hosting";
+import type { HostingProviderId } from "@/lib/hosting-providers";
 import { z } from "zod";
 
 function rateLimitResponse(retryAfterMs: number) {
@@ -15,6 +24,14 @@ function rateLimitResponse(retryAfterMs: number) {
   );
 }
 
+/**
+ * Sync Framer → GitHub.
+ * Optional body: {
+ *   hostTarget?: "none" | "cloudflare" | "vercel" | "netlify"
+ *   deployToCloudflare?: boolean  // legacy alias for hostTarget=cloudflare
+ * }
+ * GitHub always works. Hosting deploy only if target set and SSO connected.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -37,6 +54,21 @@ export async function POST(
   });
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
 
+  let hostTarget: "none" | HostingProviderId = "none";
+  try {
+    const body = (await req.json().catch(() => ({}))) as {
+      hostTarget?: string;
+      deployToCloudflare?: boolean;
+    };
+    if (body?.hostTarget === "cloudflare" || body?.hostTarget === "vercel" || body?.hostTarget === "netlify") {
+      hostTarget = body.hostTarget;
+    } else if (body?.deployToCloudflare) {
+      hostTarget = "cloudflare";
+    }
+  } catch {
+    /* empty body ok */
+  }
+
   const project = await prisma.project.findFirst({
     where: { id, userId: session.user.id },
   });
@@ -45,25 +77,25 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Concurrency lock: prevent double-sync, but recover from stale locks
-  // (a hard function timeout kills the route before it can reset the status)
+  // Default: if client didn't specify, deploy to CF when project prefers cloudflare
+  // (actual deploy still requires a connected token below)
+  // Client always sends explicit flag from UI.
+
   if (project.status === "syncing") {
     const lockAgeMs = Date.now() - new Date(project.updatedAt).getTime();
-    if (lockAgeMs < 90_000) {
+    if (lockAgeMs < 180_000) {
       return NextResponse.json({ error: "Sync already in progress" }, { status: 409 });
     }
-    // Stale lock — clean up orphaned log entries and take over
     await prisma.syncLog.updateMany({
       where: { projectId: project.id, status: "running" },
       data: {
         status: "error",
-        errorMessage: "Sync was interrupted (function timeout)",
+        errorMessage: "Sync was interrupted",
         completedAt: new Date(),
       },
     });
   }
 
-  // Create sync log entry
   const syncLog = await prisma.syncLog.create({
     data: {
       projectId: project.id,
@@ -71,36 +103,18 @@ export async function POST(
     },
   });
 
-  // Update project status
   await prisma.project.update({
     where: { id: project.id },
     data: { status: "syncing" },
   });
 
   try {
-    // 1. Scrape the Framer site (with URL validation guard)
     const result = await guardedScrape(project.framerUrl, scrapeFramerSite);
 
-    // 2. Check for changes
-    const changesDetected = !project.lastContentHash || project.lastContentHash !== result.contentHash;
+    const changesDetected =
+      !project.lastContentHash || project.lastContentHash !== result.contentHash;
 
-    if (!changesDetected) {
-      await prisma.syncLog.update({
-        where: { id: syncLog.id },
-        data: {
-          status: "success",
-          changesDetected: false,
-          completedAt: new Date(),
-        },
-      });
-      await prisma.project.update({
-        where: { id: project.id },
-        data: { status: "idle", lastSyncAt: new Date() },
-      });
-      return NextResponse.json({ success: true, changesDetected: false });
-    }
-
-    // 3. Push to GitHub
+    // Always prepare files (even if hash matches, CF redeploy may still be requested)
     const octokit = getOctokit(session.accessToken);
     const [owner, repo] = project.githubRepo.split("/");
 
@@ -108,7 +122,6 @@ export async function POST(
       throw new Error("Invalid GitHub repo format. Expected: owner/repo");
     }
 
-    // Add deployment config files
     const deployFiles = [...result.files];
 
     if (project.deployProvider === "netlify") {
@@ -125,24 +138,268 @@ export async function POST(
       });
     }
 
-    const commitSha = await createTreeAndCommit(
-      octokit,
-      owner,
-      repo,
-      project.githubBranch,
-      deployFiles,
-      `FramerClone sync: ${project.framerDomain} (${new Date().toISOString()})`
-    );
+    if (
+      (hostTarget !== "none" ||
+        project.deployProvider === "cloudflare" ||
+        project.deployProvider === "netlify") &&
+      !deployFiles.some((f) => f.path === "_redirects")
+    ) {
+      deployFiles.push({
+        path: "_redirects",
+        content: Buffer.from("/*    /index.html   200\n", "utf-8"),
+      });
+    }
 
-    // 4. Update database
+    let commitSha: string | null = null;
+    let filesChanged = 0;
+
+    if (changesDetected) {
+      commitSha = await createTreeAndCommit(
+        octokit,
+        owner,
+        repo,
+        project.githubBranch,
+        deployFiles,
+        `FramerClone sync: ${project.framerDomain} (${new Date().toISOString()})`
+      );
+      filesChanged = deployFiles.length;
+    }
+
+    // Optional host deploy (Cloudflare recommended; Vercel/Netlify via SSO)
+    let deployUrl: string | null = null;
+    let cloudflareProjectName: string | null = project.cloudflareProjectName;
+    let vercelProjectId: string | null = project.vercelProjectId;
+    let netlifySiteId: string | null = project.netlifySiteId;
+    let domainSetup: {
+      message: string;
+      steps: string[];
+      dashboardUrl?: string;
+    } | null = null;
+    let hostDeployed = false;
+    let hostProvider: HostingProviderId | null = null;
+
+    const hostFiles = changesDetected
+      ? deployFiles
+      : result.files.concat(
+          result.files.some((f) => f.path === "_redirects")
+            ? []
+            : [
+                {
+                  path: "_redirects",
+                  content: Buffer.from("/*    /index.html   200\n", "utf-8"),
+                },
+              ]
+        );
+
+    if (hostTarget !== "none") {
+      const auth = await getUserHostingToken(session.user.id, hostTarget);
+      if (!auth.ok) {
+        if (changesDetected && commitSha) {
+          await prisma.syncLog.update({
+            where: { id: syncLog.id },
+            data: {
+              status: "success",
+              changesDetected: true,
+              filesChanged,
+              commitSha,
+              commitMessage: `Synced to GitHub (${hostTarget} skipped: ${auth.message})`,
+              completedAt: new Date(),
+            },
+          });
+          await prisma.project.update({
+            where: { id: project.id },
+            data: {
+              status: "idle",
+              lastSyncAt: new Date(),
+              lastContentHash: result.contentHash,
+            },
+          });
+          return NextResponse.json({
+            success: true,
+            changesDetected: true,
+            commitSha,
+            filesChanged,
+            hosting: {
+              deployed: false,
+              provider: hostTarget,
+              message: auth.message,
+            },
+          });
+        }
+        return NextResponse.json(
+          {
+            error: "hosting_required",
+            provider: hostTarget,
+            message: auth.message,
+          },
+          { status: 412 }
+        );
+      }
+
+      const siteName =
+        project.name || project.framerDomain.replace(/\./g, "-");
+
+      if (hostTarget === "cloudflare") {
+        if (!auth.accountId) {
+          throw new Error("Cloudflare account id missing — reconnect Cloudflare.");
+        }
+        cloudflareProjectName =
+          project.cloudflareProjectName || slugifyProjectName(siteName);
+        const pagesProject = await getOrCreatePagesProject(
+          auth.token,
+          auth.accountId,
+          cloudflareProjectName
+        );
+        if (!pagesProject.success) {
+          throw new Error(`Cloudflare Pages project: ${pagesProject.error}`);
+        }
+        const deployment = await deployPagesFiles(
+          auth.token,
+          auth.accountId,
+          cloudflareProjectName,
+          hostFiles
+        );
+        if (!deployment.success) {
+          throw new Error(`Cloudflare deploy failed: ${deployment.error}`);
+        }
+        deployUrl =
+          deployment.result.url ||
+          `https://${cloudflareProjectName}.pages.dev`;
+        hostDeployed = true;
+        hostProvider = "cloudflare";
+        domainSetup = {
+          message:
+            "Live on Cloudflare Pages (recommended for commercial sites). Custom domain is the only remaining step.",
+          steps: [
+            `Dashboard → Workers & Pages → ${cloudflareProjectName}`,
+            "Custom domains → Set up a domain",
+            "Point DNS as instructed (easiest if domain is already on Cloudflare)",
+          ],
+          dashboardUrl: `https://dash.cloudflare.com/?to=/:account/pages/view/${cloudflareProjectName}`,
+        };
+      } else if (hostTarget === "vercel") {
+        const deployment = await deployToVercel(auth.token, {
+          name: siteName,
+          files: hostFiles,
+          teamId: auth.accountId,
+          existingProjectId: project.vercelProjectId,
+        });
+        if (!deployment.success) {
+          throw new Error(`Vercel deploy failed: ${deployment.error}`);
+        }
+        deployUrl = deployment.result.url;
+        vercelProjectId = deployment.result.projectId;
+        hostDeployed = true;
+        hostProvider = "vercel";
+        domainSetup = {
+          message:
+            "Live on Vercel. Note: Hobby free plan is for personal/non-commercial use only.",
+          steps: [
+            "Open the Vercel project → Settings → Domains",
+            "Add your custom domain and follow DNS",
+            "For commercial / client work, upgrade to Pro if required by Vercel ToS",
+          ],
+          dashboardUrl: "https://vercel.com/dashboard",
+        };
+      } else if (hostTarget === "netlify") {
+        const deployment = await deployToNetlify(auth.token, {
+          name: siteName,
+          files: hostFiles,
+          existingSiteId: project.netlifySiteId,
+        });
+        if (!deployment.success) {
+          throw new Error(`Netlify deploy failed: ${deployment.error}`);
+        }
+        deployUrl = deployment.result.url;
+        netlifySiteId = deployment.result.siteId;
+        hostDeployed = true;
+        hostProvider = "netlify";
+        domainSetup = {
+          message:
+            "Live on Netlify. Free tier is typically for personal projects — commercial sites may need a paid plan.",
+          steps: [
+            "Open the Netlify site → Domain management",
+            "Add a custom domain and follow DNS",
+            "Review Netlify pricing if this is a client / commercial site",
+          ],
+          dashboardUrl: netlifySiteId
+            ? `https://app.netlify.com/sites/${netlifySiteId}`
+            : "https://app.netlify.com/",
+        };
+      }
+
+      if (hostDeployed && !changesDetected) {
+        await prisma.syncLog.update({
+          where: { id: syncLog.id },
+          data: {
+            status: "success",
+            changesDetected: false,
+            filesChanged: hostFiles.length,
+            commitMessage: `Redeployed to ${hostProvider}: ${deployUrl}`,
+            completedAt: new Date(),
+          },
+        });
+        await prisma.project.update({
+          where: { id: project.id },
+          data: {
+            status: "idle",
+            lastSyncAt: new Date(),
+            lastDeployAt: new Date(),
+            deployProvider: hostProvider || "none",
+            deployUrl,
+            ...(hostProvider === "cloudflare"
+              ? {
+                  cloudflareProjectName,
+                  cloudflareDeployUrl: deployUrl,
+                }
+              : {}),
+            ...(hostProvider === "vercel"
+              ? { vercelProjectId, vercelDeployUrl: deployUrl }
+              : {}),
+            ...(hostProvider === "netlify"
+              ? { netlifySiteId, netlifyDeployUrl: deployUrl }
+              : {}),
+          },
+        });
+        return NextResponse.json({
+          success: true,
+          changesDetected: false,
+          filesChanged: hostFiles.length,
+          deployUrl,
+          domainSetup,
+          hosting: { deployed: true, provider: hostProvider },
+        });
+      }
+    }
+
+    if (!changesDetected && !hostDeployed) {
+      await prisma.syncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: "success",
+          changesDetected: false,
+          completedAt: new Date(),
+        },
+      });
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { status: "idle", lastSyncAt: new Date() },
+      });
+      return NextResponse.json({ success: true, changesDetected: false });
+    }
+
+    const commitMessage = hostDeployed
+      ? `Synced to GitHub + ${hostProvider}: ${deployUrl}`
+      : `FramerClone sync: ${project.framerDomain}`;
+
     await prisma.syncLog.update({
       where: { id: syncLog.id },
       data: {
         status: "success",
         changesDetected: true,
-        filesChanged: deployFiles.length,
+        filesChanged,
         commitSha,
-        commitMessage: `FramerClone sync: ${project.framerDomain}`,
+        commitMessage,
         completedAt: new Date(),
       },
     });
@@ -153,6 +410,25 @@ export async function POST(
         status: "idle",
         lastSyncAt: new Date(),
         lastContentHash: result.contentHash,
+        ...(hostDeployed
+          ? {
+              lastDeployAt: new Date(),
+              deployProvider: hostProvider || "none",
+              deployUrl,
+              ...(hostProvider === "cloudflare"
+                ? {
+                    cloudflareProjectName,
+                    cloudflareDeployUrl: deployUrl,
+                  }
+                : {}),
+              ...(hostProvider === "vercel"
+                ? { vercelProjectId, vercelDeployUrl: deployUrl }
+                : {}),
+              ...(hostProvider === "netlify"
+                ? { netlifySiteId, netlifyDeployUrl: deployUrl }
+                : {}),
+            }
+          : {}),
       },
     });
 
@@ -160,29 +436,46 @@ export async function POST(
       success: true,
       changesDetected: true,
       commitSha,
-      filesChanged: deployFiles.length,
+      filesChanged,
+      ...(hostDeployed
+        ? {
+            deployUrl,
+            domainSetup,
+            hosting: { deployed: true, provider: hostProvider },
+          }
+        : { hosting: { deployed: false } }),
     });
   } catch (err: unknown) {
     console.error("Sync failed:", err);
     const rawMessage = err instanceof Error ? err.message : String(err);
 
-    // Detect common failure modes and provide actionable messages
     let userMessage = rawMessage;
     let statusCode = 500;
 
     if (err instanceof SecurityError) {
       userMessage = `Security check failed: ${rawMessage}`;
       statusCode = 400;
-    } else if (rawMessage.includes("FUNCTION_INVOCATION_TIMEOUT") || rawMessage.includes("Task timed out")) {
-      userMessage = "Sync timed out — the site has too many pages/assets for the current server plan. Try a simpler site or upgrade to Vercel Pro for longer timeouts.";
+    } else if (
+      rawMessage.includes("FUNCTION_INVOCATION_TIMEOUT") ||
+      rawMessage.includes("Task timed out")
+    ) {
+      userMessage =
+        "Sync timed out — the site has too many pages/assets. Try again or simplify the site.";
       statusCode = 504;
-    } else if (rawMessage.includes("browserType.launch") || rawMessage.includes("executable") || rawMessage.includes("Chromium")) {
-      userMessage = "Browser engine failed to start. This may be a temporary serverless issue — please try again in a moment.";
+    } else if (
+      rawMessage.includes("browserType.launch") ||
+      rawMessage.includes("executable") ||
+      rawMessage.includes("Chromium")
+    ) {
+      userMessage =
+        "Browser engine failed to start. Please try again in a moment.";
     } else if (rawMessage.includes("Bad credentials") || rawMessage.includes("401")) {
-      userMessage = "GitHub authentication failed. Please sign out and sign back in to refresh your access token.";
+      userMessage =
+        "GitHub authentication failed. Please sign out and sign back in to refresh your access token.";
       statusCode = 401;
     } else if (rawMessage.includes("Not Found") && rawMessage.includes("404")) {
-      userMessage = "GitHub repository not found. Make sure the repo exists and you have write access to it.";
+      userMessage =
+        "GitHub repository not found. Make sure the repo exists and you have write access to it.";
       statusCode = 404;
     }
 

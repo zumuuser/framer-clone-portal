@@ -9,7 +9,9 @@ const createProjectSchema = z.object({
   framerDomain: z.string().min(1),
   githubRepo: z.string().min(1),
   githubBranch: z.string().default("main"),
-  deployProvider: z.enum(["netlify", "vercel", "self-hosted", "none"]).default("none"),
+  deployProvider: z
+    .enum(["netlify", "vercel", "self-hosted", "none", "cloudflare"])
+    .default("none"),
 });
 
 function rateLimitResponse(retryAfterMs: number) {

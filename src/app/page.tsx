@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSession, signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -10,25 +11,31 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center space-y-8">
+      {/* Center brand mark — large, optimized WebP */}
+      <BrandLogo width={420} priority className="mb-2" />
+
       <div className="space-y-4 max-w-2xl">
         <h1 className="text-5xl font-bold tracking-tight">
           Deploy Framer Sites Anywhere
         </h1>
         <p className="text-xl text-muted-foreground">
-          Export your Framer websites to GitHub and deploy on Netlify, Vercel, or self-hosted infrastructure.
-          Track changes, rollback anytime, and own your code.
+          Export your Framer websites to GitHub and deploy on Cloudflare, Netlify,
+          Vercel, or self-hosted infrastructure. Track changes, rollback anytime,
+          and own your code.
         </p>
       </div>
       <div className="flex gap-4">
         {isLoading ? (
-          <div className="h-12 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-12 w-32 bg-muted animate-pulse" />
         ) : session ? (
           <>
             <Link href="/dashboard">
               <Button size="lg">Get Started</Button>
             </Link>
             <Link href="/dashboard">
-              <Button size="lg" variant="outline">View Dashboard</Button>
+              <Button size="lg" variant="outline">
+                View Dashboard
+              </Button>
             </Link>
           </>
         ) : (
@@ -53,16 +60,22 @@ export default function Home() {
         />
         <FeatureCard
           title="Auto-Deploy"
-          description="Connect Netlify or Vercel. Push to GitHub triggers automatic deployment."
+          description="Connect Cloudflare (recommended), Netlify, or Vercel. Own your code and ship anywhere."
         />
       </div>
     </div>
   );
 }
 
-function FeatureCard({ title, description }: { title: string; description: string }) {
+function FeatureCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
-    <div className="rounded-lg border bg-card p-6 text-left">
+    <div className="border border-border bg-card p-6 text-left">
       <h3 className="font-semibold text-lg mb-2">{title}</h3>
       <p className="text-sm text-muted-foreground">{description}</p>
     </div>

@@ -12,11 +12,16 @@ export async function listRepos(octokit: Octokit) {
   return data;
 }
 
-export async function createRepo(octokit: Octokit, name: string, description?: string) {
+export async function createRepo(
+  octokit: Octokit,
+  name: string,
+  description?: string,
+  isPrivate = false
+) {
   const { data } = await octokit.rest.repos.createForAuthenticatedUser({
     name,
     description: description || `FramerClone export for ${name}`,
-    private: false,
+    private: isPrivate,
     auto_init: true,
   });
   return data;

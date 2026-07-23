@@ -51,4 +51,5 @@ EXPOSE 3000
 
 USER appuser
 
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+# db push: Neon already has schema; migrate deploy fails (P3005) with no migration history
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npm start"]

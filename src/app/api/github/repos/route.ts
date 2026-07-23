@@ -21,6 +21,7 @@ const createRepoSchema = z.object({
       "Repo name can only contain letters, numbers, hyphens, underscores, and dots"
     ),
   description: z.string().max(350).optional(),
+  private: z.boolean().optional().default(false),
 });
 
 export async function GET(req: NextRequest) {
@@ -67,13 +68,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.format() }, { status: 400 });
     }
     const octokit = getOctokit(session.accessToken);
-    const repo = await createRepo(octokit, parsed.data.name, parsed.data.description);
+    const repo = await createRepo(
+      octokit,
+      parsed.data.name,
+      parsed.data.description,
+      parsed.data.private
+    );
     return NextResponse.json(repo, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    const status =
+      typeof err === "object" && err && "status" in err
+        ? Number((err as { status: number }).status) || 500
+        : 500;
     return NextResponse.json(
       { error: "Failed to create repo", message },
-      { status: 500 }
+      { status: status === 422 ? 409 : status }
     );
   }
 }

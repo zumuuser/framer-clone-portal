@@ -7,12 +7,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+function slugifyRepoName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "framer-site"
+  );
+}
+
 export default function NewProject() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [repos, setRepos] = useState<{ full_name: string }[]>([]);
+  const [creatingRepo, setCreatingRepo] = useState(false);
+  const [newRepoName, setNewRepoName] = useState("");
+  const [createPrivate, setCreatePrivate] = useState(false);
+  const [repoCreatedMsg, setRepoCreatedMsg] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -24,6 +39,7 @@ export default function NewProject() {
 
   async function fetchRepos() {
     setLoading(true);
+    setError("");
     try {
       const res = await fetch("/api/github/repos");
       const data = await res.json();
@@ -36,6 +52,44 @@ export default function NewProject() {
       setError("Failed to fetch repos");
     }
     setLoading(false);
+  }
+
+  async function createRepoOneClick() {
+    setCreatingRepo(true);
+    setError("");
+    setRepoCreatedMsg("");
+    try {
+      const name =
+        newRepoName.trim() ||
+        slugifyRepoName(form.name || form.framerDomain || "framer-site");
+      const res = await fetch("/api/github/repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: `FramerClone export: ${form.name || form.framerDomain}`,
+          private: createPrivate,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || data.error || "Failed to create repo");
+        setCreatingRepo(false);
+        return;
+      }
+      const fullName = data.full_name as string;
+      setForm((f) => ({ ...f, githubRepo: fullName }));
+      setRepoCreatedMsg(`Created ${fullName}`);
+      // refresh list
+      setRepos((prev) =>
+        prev.some((r) => r.full_name === fullName)
+          ? prev
+          : [{ full_name: fullName }, ...prev]
+      );
+    } catch {
+      setError("Failed to create repo");
+    }
+    setCreatingRepo(false);
   }
 
   async function createProject() {
@@ -51,7 +105,11 @@ export default function NewProject() {
       if (res.ok) {
         router.push(`/projects/${data.id}`);
       } else {
-        setError(data.error || "Failed to create project");
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "Failed to create project"
+        );
       }
     } catch {
       setError("Failed to create project");
@@ -63,7 +121,9 @@ export default function NewProject() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold">New Project</h1>
-        <p className="text-muted-foreground">Connect a Framer site to GitHub</p>
+        <p className="text-muted-foreground">
+          Connect a Framer site → GitHub → host on Cloudflare
+        </p>
       </div>
 
       <Card>
@@ -71,8 +131,8 @@ export default function NewProject() {
           <CardTitle>Step {step} of 3</CardTitle>
           <CardDescription>
             {step === 1 && "Enter your Framer site details"}
-            {step === 2 && "Connect a GitHub repository"}
-            {step === 3 && "Choose deployment settings"}
+            {step === 2 && "Create or pick a GitHub repository"}
+            {step === 3 && "Deployment settings"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -84,7 +144,11 @@ export default function NewProject() {
                   id="name"
                   placeholder="My Framer Site"
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setForm({ ...form, name });
+                    if (!newRepoName) setNewRepoName(slugifyRepoName(name));
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -93,10 +157,22 @@ export default function NewProject() {
                   id="domain"
                   placeholder="yoursite.framer.website"
                   value={form.framerDomain}
-                  onChange={(e) => setForm({ ...form, framerDomain: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, framerDomain: e.target.value })
+                  }
                 />
               </div>
-              <Button onClick={() => setStep(2)} disabled={!form.name || !form.framerDomain}>
+              <Button
+                onClick={() => {
+                  if (!newRepoName) {
+                    setNewRepoName(
+                      slugifyRepoName(form.name || form.framerDomain)
+                    );
+                  }
+                  setStep(2);
+                }}
+                disabled={!form.name || !form.framerDomain}
+              >
                 Next
               </Button>
             </>
@@ -104,8 +180,52 @@ export default function NewProject() {
 
           {step === 2 && (
             <>
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                <div>
+                  <p className="font-medium text-sm">Create new repo (one click)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Uses your GitHub login — no need to leave this page.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newRepo">Repo name</Label>
+                  <Input
+                    id="newRepo"
+                    placeholder="my-framer-site"
+                    value={newRepoName}
+                    onChange={(e) => setNewRepoName(e.target.value)}
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={createPrivate}
+                    onChange={(e) => setCreatePrivate(e.target.checked)}
+                  />
+                  Private repository
+                </label>
+                <Button
+                  onClick={createRepoOneClick}
+                  disabled={creatingRepo || !newRepoName.trim()}
+                >
+                  {creatingRepo ? "Creating..." : "Create GitHub Repo"}
+                </Button>
+                {repoCreatedMsg && (
+                  <p className="text-sm text-green-500">{repoCreatedMsg}</p>
+                )}
+              </div>
+
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">or use existing</span>
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label>GitHub Repository</Label>
+                <Label>Existing GitHub Repository</Label>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={fetchRepos} disabled={loading}>
                     {loading ? "Loading..." : "Fetch My Repos"}
@@ -115,7 +235,9 @@ export default function NewProject() {
                   <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={form.githubRepo}
-                    onChange={(e) => setForm({ ...form, githubRepo: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, githubRepo: e.target.value })
+                    }
                   >
                     <option value="">Select a repo...</option>
                     {repos.map((repo) => (
@@ -128,7 +250,9 @@ export default function NewProject() {
                 <Input
                   placeholder="or type: owner/repo-name"
                   value={form.githubRepo}
-                  onChange={(e) => setForm({ ...form, githubRepo: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, githubRepo: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -136,9 +260,12 @@ export default function NewProject() {
                 <Input
                   id="branch"
                   value={form.githubBranch}
-                  onChange={(e) => setForm({ ...form, githubBranch: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, githubBranch: e.target.value })
+                  }
                 />
               </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setStep(1)}>
                   Back
@@ -157,13 +284,28 @@ export default function NewProject() {
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={form.deployProvider}
-                  onChange={(e) => setForm({ ...form, deployProvider: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, deployProvider: e.target.value })
+                  }
                 >
-                  <option value="none">None (GitHub only)</option>
-                  <option value="netlify">Netlify</option>
-                  <option value="vercel">Vercel</option>
+                  <option value="none">GitHub only (default)</option>
+                  <option value="cloudflare">
+                    Cloudflare Pages (recommended — commercial OK on free)
+                  </option>
+                  <option value="vercel">
+                    Vercel (free Hobby = personal / non-commercial only)
+                  </option>
+                  <option value="netlify">
+                    Netlify (free = typically personal projects)
+                  </option>
                   <option value="self-hosted">Self-hosted</option>
                 </select>
+                <p className="text-xs text-muted-foreground">
+                  Sync always pushes to GitHub. On the project page, connect a host
+                  with one-click SSO (Cloudflare recommended) if you also want a
+                  live deploy. Vercel Hobby and Netlify free tiers are not meant
+                  for commercial / client sites.
+                </p>
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <div className="flex gap-2">
