@@ -17,7 +17,7 @@ const siteUrl = "https://clone.webyverse.com";
 const siteName = "FramerClone";
 const siteTitle = "FramerClone — Deploy Framer Sites Anywhere";
 const siteDescription =
-  "Export Framer websites to GitHub and deploy on Cloudflare, Netlify, Vercel, or self-hosted. Own your code, track every sync, roll back anytime.";
+  "Export Framer websites to GitHub and deploy on Cloudflare Pages. Own your code, track every sync, roll back anytime.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

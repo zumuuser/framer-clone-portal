@@ -10,7 +10,7 @@ const createProjectSchema = z.object({
   githubRepo: z.string().min(1),
   githubBranch: z.string().default("main"),
   deployProvider: z
-    .enum(["netlify", "vercel", "self-hosted", "none", "cloudflare"])
+    .enum(["none", "cloudflare", "self-hosted"])
     .default("none"),
 });
 

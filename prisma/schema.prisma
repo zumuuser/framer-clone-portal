@@ -49,22 +49,12 @@ model User {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   projectLimit  Int        @default(10)
-  // Cloudflare connection (encrypted tokens at rest) — SSO preferred
+  // Cloudflare connection (encrypted tokens at rest) — SSO
   cloudflareAccountId      String?
   cloudflareAccountName    String?
   cloudflareToken          String?
   cloudflareRefreshToken   String?
   cloudflareTokenExpiresAt DateTime?
-  // Vercel connection (OAuth)
-  vercelToken              String?
-  vercelTeamId             String?
-  vercelTeamName           String?
-  vercelTokenExpiresAt     DateTime?
-  // Netlify connection (OAuth)
-  netlifyToken             String?
-  netlifyUserId            String?
-  netlifyUserName          String?
-  netlifyTokenExpiresAt    DateTime?
   accounts      Account[]
   auditLogs     AuditLog[]
   projects      Project[]
@@ -92,10 +82,6 @@ model Project {
   // Hosting platform project ids / URLs
   cloudflareProjectName String?
   cloudflareDeployUrl   String?
-  vercelProjectId       String?
-  vercelDeployUrl       String?
-  netlifySiteId         String?
-  netlifyDeployUrl      String?
   lastDeployAt          DateTime?
   lastSyncAt      DateTime?
   lastContentHash String?

@@ -18,10 +18,6 @@ interface Project {
   deployUrl: string | null;
   cloudflareProjectName: string | null;
   cloudflareDeployUrl: string | null;
-  vercelProjectId: string | null;
-  vercelDeployUrl: string | null;
-  netlifySiteId: string | null;
-  netlifyDeployUrl: string | null;
   lastDeployAt: string | null;
   status: string;
   lastSyncAt: string | null;
@@ -39,7 +35,7 @@ interface Project {
   }[];
 }
 
-type HostTarget = "none" | "cloudflare" | "vercel" | "netlify";
+type HostTarget = "none" | "cloudflare";
 
 interface HostingProviderStatus {
   id: HostTarget;
@@ -97,8 +93,8 @@ function ProjectDetailInner() {
         success: true,
         message: `${p} connected via SSO. Pick it as deploy target and click Sync to GitHub.`,
       });
-      if (p === "cloudflare" || p === "vercel" || p === "netlify") {
-        setHostTarget(p);
+      if (p === "cloudflare") {
+        setHostTarget("cloudflare");
       }
       fetchHostingStatus();
     }
@@ -284,12 +280,7 @@ function ProjectDetailInner() {
   const framerLink = project.framerUrl.startsWith("http")
     ? project.framerUrl
     : `https://${project.framerUrl}`;
-  const liveUrl =
-    project.cloudflareDeployUrl ||
-    project.vercelDeployUrl ||
-    project.netlifyDeployUrl ||
-    project.deployUrl ||
-    null;
+  const liveUrl = project.cloudflareDeployUrl || project.deployUrl || null;
   const busy = syncing || project.status === "syncing";
 
   return (
@@ -358,34 +349,6 @@ function ProjectDetailInner() {
                     commercialOnFree: true,
                     connectLabel: "Connect Cloudflare",
                     docsUrl: "https://developers.cloudflare.com/pages/",
-                    oauthConfigured: false,
-                    connected: false,
-                    accountName: null,
-                    accountId: null,
-                  },
-                  {
-                    id: "vercel" as HostTarget,
-                    name: "Vercel",
-                    recommended: false,
-                    freePlanNote:
-                      "Hobby free is personal/non-commercial only. Paid plan needed for commercial sites.",
-                    commercialOnFree: false,
-                    connectLabel: "Connect Vercel",
-                    docsUrl: "https://vercel.com/docs/accounts/plans/hobby",
-                    oauthConfigured: false,
-                    connected: false,
-                    accountName: null,
-                    accountId: null,
-                  },
-                  {
-                    id: "netlify" as HostTarget,
-                    name: "Netlify",
-                    recommended: false,
-                    freePlanNote:
-                      "Free tier is typically personal projects. Commercial sites usually need a paid plan.",
-                    commercialOnFree: false,
-                    connectLabel: "Connect Netlify",
-                    docsUrl: "https://www.netlify.com/pricing/",
                     oauthConfigured: false,
                     connected: false,
                     accountName: null,
@@ -462,17 +425,11 @@ function ProjectDetailInner() {
               <option value="cloudflare">
                 Cloudflare Pages (recommended — commercial OK on free)
               </option>
-              <option value="vercel">
-                Vercel (free = personal / non-commercial only)
-              </option>
-              <option value="netlify">
-                Netlify (free = typically personal projects)
-              </option>
             </select>
             <p className="text-xs text-muted-foreground">
-              Connect the provider first with one-click SSO. Without a
-              connection, Sync only updates GitHub. Custom domains are configured
-              in the host dashboard after deploy.
+              Connect Cloudflare first with one-click SSO. Without a connection,
+              Sync only updates GitHub. Custom domains are configured in the
+              Cloudflare dashboard after deploy.
             </p>
           </div>
 

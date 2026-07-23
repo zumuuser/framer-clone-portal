@@ -11,7 +11,7 @@ This document describes **what exists today**, how each piece works alone, and h
 
 ## 1. What the product does (one sentence)
 
-A signed-in user pastes a Framer domain; the app **scrapes** the published site, **commits** it to their GitHub repo, and optionally **deploys** it to Cloudflare / Vercel / Netlify.
+A signed-in user pastes a Framer domain; the app **scrapes** the published site, **commits** it to their GitHub repo, and optionally **deploys** it to Cloudflare Pages.
 
 ---
 

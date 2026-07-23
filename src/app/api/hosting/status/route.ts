@@ -18,28 +18,10 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const providers: HostingProviderId[] = ["cloudflare", "vercel", "netlify"];
+  const providers: HostingProviderId[] = ["cloudflare"];
 
   const status = providers.map((id) => {
     const meta = HOSTING_PROVIDERS[id];
-    let connected = false;
-    let accountName: string | null = null;
-    let accountId: string | null = null;
-
-    if (id === "cloudflare") {
-      connected = !!user.cloudflareToken;
-      accountName = user.cloudflareAccountName;
-      accountId = user.cloudflareAccountId;
-    } else if (id === "vercel") {
-      connected = !!user.vercelToken;
-      accountName = user.vercelTeamName;
-      accountId = user.vercelTeamId;
-    } else if (id === "netlify") {
-      connected = !!user.netlifyToken;
-      accountName = user.netlifyUserName;
-      accountId = user.netlifyUserId;
-    }
-
     return {
       id,
       name: meta.name,
@@ -49,9 +31,9 @@ export async function GET() {
       connectLabel: meta.connectLabel,
       docsUrl: meta.docsUrl,
       oauthConfigured: providerConfigured(id),
-      connected,
-      accountName,
-      accountId,
+      connected: !!user.cloudflareToken,
+      accountName: user.cloudflareAccountName,
+      accountId: user.cloudflareAccountId,
     };
   });
 
@@ -59,6 +41,6 @@ export async function GET() {
     providers: status,
     recommended: "cloudflare" as const,
     summary:
-      "Cloudflare Pages is recommended for commercial sites (no personal-only free-plan restriction). Vercel Hobby and Netlify free tiers are for personal / non-commercial projects.",
+      "Deploy to Cloudflare Pages after syncing to GitHub. Free plan supports commercial sites.",
   });
 }

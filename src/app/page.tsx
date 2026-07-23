@@ -19,9 +19,8 @@ export default function Home() {
           Deploy Framer Sites Anywhere
         </h1>
         <p className="text-xl text-muted-foreground">
-          Export your Framer websites to GitHub and deploy on Cloudflare, Netlify,
-          Vercel, or self-hosted infrastructure. Track changes, rollback anytime,
-          and own your code.
+          Export your Framer websites to GitHub and deploy on Cloudflare Pages.
+          Track changes, rollback anytime, and own your code.
         </p>
       </div>
       <div className="flex gap-4">
@@ -60,7 +59,7 @@ export default function Home() {
         />
         <FeatureCard
           title="Auto-Deploy"
-          description="Connect Cloudflare (recommended), Netlify, or Vercel. Own your code and ship anywhere."
+          description="Connect Cloudflare Pages with one-click SSO. Own your code and ship on the free commercial-friendly plan."
         />
       </div>
     </div>

@@ -6,14 +6,12 @@ import {
   providerConfigured,
   baseUrlFromRequest,
 } from "@/lib/hosting-providers";
-import { buildCloudflareAuthUrl, CF_OAUTH } from "@/lib/cloudflare";
-import { VERCEL_OAUTH } from "@/lib/vercel-hosting";
-import { NETLIFY_OAUTH } from "@/lib/netlify-hosting";
+import { buildCloudflareAuthUrl } from "@/lib/cloudflare";
 
-const VALID: HostingProviderId[] = ["cloudflare", "vercel", "netlify"];
+const VALID: HostingProviderId[] = ["cloudflare"];
 
 /**
- * Start OAuth / SSO for a hosting provider.
+ * Start OAuth / SSO for Cloudflare.
  * GET /api/hosting/cloudflare/auth?returnTo=/projects/xxx
  */
 export async function GET(
@@ -27,7 +25,10 @@ export async function GET(
 
   const { provider: raw } = await params;
   if (!VALID.includes(raw as HostingProviderId)) {
-    return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Only Cloudflare hosting is supported" },
+      { status: 400 }
+    );
   }
   const provider = raw as HostingProviderId;
 
@@ -35,7 +36,8 @@ export async function GET(
     return NextResponse.json(
       {
         error: "oauth_not_configured",
-        message: `${provider} SSO is not configured on this server yet. Ask the admin to set OAuth client credentials.`,
+        message:
+          "Cloudflare SSO is not configured on this server yet. Set CLOUDFLARE_OAUTH_CLIENT_ID and CLOUDFLARE_OAUTH_CLIENT_SECRET.",
         provider,
       },
       { status: 501 }
@@ -51,32 +53,7 @@ export async function GET(
   const state = randomBytes(24).toString("hex");
   const base = baseUrlFromRequest(req.nextUrl.origin);
   const redirectUri = `${base}/api/hosting/${provider}/callback`;
-
-  let url: string;
-  if (provider === "cloudflare") {
-    url = buildCloudflareAuthUrl(state, redirectUri);
-  } else if (provider === "vercel") {
-    const q = new URLSearchParams({
-      client_id: process.env.VERCEL_OAUTH_CLIENT_ID!,
-      redirect_uri: redirectUri,
-      scope: VERCEL_OAUTH.scopes,
-      state,
-      response_type: "code",
-    });
-    url = `${VERCEL_OAUTH.authorize}?${q.toString()}`;
-  } else {
-    // Netlify authorization code flow
-    const q = new URLSearchParams({
-      client_id: process.env.NETLIFY_OAUTH_CLIENT_ID!,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      state,
-    });
-    url = `${NETLIFY_OAUTH.authorize}?${q.toString()}`;
-  }
-
-  // silence unused import warning for CF_OAUTH if any
-  void CF_OAUTH;
+  const url = buildCloudflareAuthUrl(state, redirectUri);
 
   const res = NextResponse.redirect(url);
   res.cookies.set(`host_oauth_state_${provider}`, state, {

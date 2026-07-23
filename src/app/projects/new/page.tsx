@@ -292,19 +292,12 @@ export default function NewProject() {
                   <option value="cloudflare">
                     Cloudflare Pages (recommended — commercial OK on free)
                   </option>
-                  <option value="vercel">
-                    Vercel (free Hobby = personal / non-commercial only)
-                  </option>
-                  <option value="netlify">
-                    Netlify (free = typically personal projects)
-                  </option>
                   <option value="self-hosted">Self-hosted</option>
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  Sync always pushes to GitHub. On the project page, connect a host
-                  with one-click SSO (Cloudflare recommended) if you also want a
-                  live deploy. Vercel Hobby and Netlify free tiers are not meant
-                  for commercial / client sites.
+                  Sync always pushes to GitHub. On the project page, connect
+                  Cloudflare with one-click SSO if you also want a live Pages
+                  deploy.
                 </p>
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}

@@ -12,8 +12,6 @@ import {
   getOrCreatePagesProject,
   slugifyProjectName,
 } from "@/lib/cloudflare";
-import { deployToVercel } from "@/lib/vercel-hosting";
-import { deployToNetlify } from "@/lib/netlify-hosting";
 import type { HostingProviderId } from "@/lib/hosting-providers";
 import { z } from "zod";
 
@@ -27,10 +25,10 @@ function rateLimitResponse(retryAfterMs: number) {
 /**
  * Sync Framer → GitHub.
  * Optional body: {
- *   hostTarget?: "none" | "cloudflare" | "vercel" | "netlify"
+ *   hostTarget?: "none" | "cloudflare"
  *   deployToCloudflare?: boolean  // legacy alias for hostTarget=cloudflare
  * }
- * GitHub always works. Hosting deploy only if target set and SSO connected.
+ * GitHub always works. Cloudflare deploy only if target set and SSO connected.
  */
 export async function POST(
   req: NextRequest,
@@ -60,8 +58,8 @@ export async function POST(
       hostTarget?: string;
       deployToCloudflare?: boolean;
     };
-    if (body?.hostTarget === "cloudflare" || body?.hostTarget === "vercel" || body?.hostTarget === "netlify") {
-      hostTarget = body.hostTarget;
+    if (body?.hostTarget === "cloudflare") {
+      hostTarget = "cloudflare";
     } else if (body?.deployToCloudflare) {
       hostTarget = "cloudflare";
     }
@@ -124,24 +122,8 @@ export async function POST(
 
     const deployFiles = [...result.files];
 
-    if (project.deployProvider === "netlify") {
-      deployFiles.push({
-        path: "netlify.toml",
-        content: Buffer.from(
-          `[build]\n  publish = "."\n\n[[redirects]]\n  from = "/*"\n  to = "/index.html"\n  status = 200\n`,
-          "utf-8"
-        ),
-      });
-      deployFiles.push({
-        path: "_redirects",
-        content: Buffer.from("/* /index.html 200\n", "utf-8"),
-      });
-    }
-
     if (
-      (hostTarget !== "none" ||
-        project.deployProvider === "cloudflare" ||
-        project.deployProvider === "netlify") &&
+      (hostTarget !== "none" || project.deployProvider === "cloudflare") &&
       !deployFiles.some((f) => f.path === "_redirects")
     ) {
       deployFiles.push({
@@ -165,11 +147,9 @@ export async function POST(
       filesChanged = deployFiles.length;
     }
 
-    // Optional host deploy (Cloudflare recommended; Vercel/Netlify via SSO)
+    // Optional Cloudflare Pages deploy via SSO
     let deployUrl: string | null = null;
     let cloudflareProjectName: string | null = project.cloudflareProjectName;
-    let vercelProjectId: string | null = project.vercelProjectId;
-    let netlifySiteId: string | null = project.netlifySiteId;
     let domainSetup: {
       message: string;
       steps: string[];
@@ -277,55 +257,6 @@ export async function POST(
           ],
           dashboardUrl: `https://dash.cloudflare.com/?to=/:account/pages/view/${cloudflareProjectName}`,
         };
-      } else if (hostTarget === "vercel") {
-        const deployment = await deployToVercel(auth.token, {
-          name: siteName,
-          files: hostFiles,
-          teamId: auth.accountId,
-          existingProjectId: project.vercelProjectId,
-        });
-        if (!deployment.success) {
-          throw new Error(`Vercel deploy failed: ${deployment.error}`);
-        }
-        deployUrl = deployment.result.url;
-        vercelProjectId = deployment.result.projectId;
-        hostDeployed = true;
-        hostProvider = "vercel";
-        domainSetup = {
-          message:
-            "Live on Vercel. Note: Hobby free plan is for personal/non-commercial use only.",
-          steps: [
-            "Open the Vercel project → Settings → Domains",
-            "Add your custom domain and follow DNS",
-            "For commercial / client work, upgrade to Pro if required by Vercel ToS",
-          ],
-          dashboardUrl: "https://vercel.com/dashboard",
-        };
-      } else if (hostTarget === "netlify") {
-        const deployment = await deployToNetlify(auth.token, {
-          name: siteName,
-          files: hostFiles,
-          existingSiteId: project.netlifySiteId,
-        });
-        if (!deployment.success) {
-          throw new Error(`Netlify deploy failed: ${deployment.error}`);
-        }
-        deployUrl = deployment.result.url;
-        netlifySiteId = deployment.result.siteId;
-        hostDeployed = true;
-        hostProvider = "netlify";
-        domainSetup = {
-          message:
-            "Live on Netlify. Free tier is typically for personal projects — commercial sites may need a paid plan.",
-          steps: [
-            "Open the Netlify site → Domain management",
-            "Add a custom domain and follow DNS",
-            "Review Netlify pricing if this is a client / commercial site",
-          ],
-          dashboardUrl: netlifySiteId
-            ? `https://app.netlify.com/sites/${netlifySiteId}`
-            : "https://app.netlify.com/",
-        };
       }
 
       if (hostDeployed && !changesDetected) {
@@ -352,12 +283,6 @@ export async function POST(
                   cloudflareProjectName,
                   cloudflareDeployUrl: deployUrl,
                 }
-              : {}),
-            ...(hostProvider === "vercel"
-              ? { vercelProjectId, vercelDeployUrl: deployUrl }
-              : {}),
-            ...(hostProvider === "netlify"
-              ? { netlifySiteId, netlifyDeployUrl: deployUrl }
               : {}),
           },
         });
@@ -420,12 +345,6 @@ export async function POST(
                     cloudflareProjectName,
                     cloudflareDeployUrl: deployUrl,
                   }
-                : {}),
-              ...(hostProvider === "vercel"
-                ? { vercelProjectId, vercelDeployUrl: deployUrl }
-                : {}),
-              ...(hostProvider === "netlify"
-                ? { netlifySiteId, netlifyDeployUrl: deployUrl }
                 : {}),
             }
           : {}),
