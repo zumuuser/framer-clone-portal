@@ -120,15 +120,9 @@ export async function deployPagesFiles(
   projectName: string,
   files: { path: string; content: Buffer }[]
 ): Promise<CfResult<CfDeployment>> {
-  // SPA-friendly redirects for client-side routing
-  const hasRedirects = files.some((f) => f.path.replace(/^\//, "") === "_redirects");
+  // Do NOT inject /* → /index.html 200 — that soft-404s every missing URL.
+  // Scraper emits a comment-only _redirects; missing paths should return real 404s.
   const uploadFiles = [...files];
-  if (!hasRedirects) {
-    uploadFiles.push({
-      path: "_redirects",
-      content: Buffer.from("/*    /index.html   200\n", "utf-8"),
-    });
-  }
 
   // Build manifest: path -> content hash, and hash -> bytes
   const manifest: Record<string, string> = {};

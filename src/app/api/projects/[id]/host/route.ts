@@ -95,7 +95,15 @@ export async function POST(
 
   try {
     // 1. Scrape
-    const result = await guardedScrape(project.framerUrl, scrapeFramerSite);
+    const CANONICAL_BY_REPO: Record<string, string> = {
+      "zumuuser/clonesitetestkeydispatchers": "https://keydispatchers.com",
+      "zumuuser/travelteam": "https://travelteam.ge",
+      "zumuuser/renderform.studio": "https://renderform.studio",
+    };
+    const canonicalOrigin = CANONICAL_BY_REPO[project.githubRepo];
+    const result = await guardedScrape(project.framerUrl, (url) =>
+      scrapeFramerSite(url, { canonicalOrigin, maxPages: 200 })
+    );
 
     // 2. Push GitHub (always on host so repo stays source of truth)
     const octokit = getOctokit(session.accessToken);
@@ -104,14 +112,8 @@ export async function POST(
       throw new Error("Invalid GitHub repo format. Expected: owner/repo");
     }
 
+    // Scraper already emits _redirects / robots / sitemap — do not inject SPA soft-404.
     const deployFiles = [...result.files];
-    // Cloudflare Pages SPA redirect
-    if (!deployFiles.some((f) => f.path === "_redirects")) {
-      deployFiles.push({
-        path: "_redirects",
-        content: Buffer.from("/*    /index.html   200\n", "utf-8"),
-      });
-    }
 
     const commitSha = await createTreeAndCommit(
       octokit,
