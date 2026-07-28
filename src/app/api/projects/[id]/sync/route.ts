@@ -107,17 +107,7 @@ export async function POST(
   });
 
   try {
-    // Map known Pages projects → public apex so canonicals don't stay on *.framer.website
-    const CANONICAL_BY_REPO: Record<string, string> = {
-      "zumuuser/clonesitetestkeydispatchers": "https://keydispatchers.com",
-      "zumuuser/travelteam": "https://travelteam.ge",
-      "zumuuser/renderform.studio": "https://renderform.studio",
-    };
-    const canonicalOrigin = CANONICAL_BY_REPO[project.githubRepo];
-
-    const result = await guardedScrape(project.framerUrl, (url) =>
-      scrapeFramerSite(url, { canonicalOrigin, maxPages: 200 })
-    );
+    const result = await guardedScrape(project.framerUrl, scrapeFramerSite);
 
     const changesDetected =
       !project.lastContentHash || project.lastContentHash !== result.contentHash;
@@ -130,8 +120,17 @@ export async function POST(
       throw new Error("Invalid GitHub repo format. Expected: owner/repo");
     }
 
-    // Scraper emits _redirects (no SPA soft-404), robots.txt, sitemap.xml, _headers.
     const deployFiles = [...result.files];
+
+    if (
+      (hostTarget !== "none" || project.deployProvider === "cloudflare") &&
+      !deployFiles.some((f) => f.path === "_redirects")
+    ) {
+      deployFiles.push({
+        path: "_redirects",
+        content: Buffer.from("/*    /index.html   200\n", "utf-8"),
+      });
+    }
 
     let commitSha: string | null = null;
     let filesChanged = 0;
@@ -148,7 +147,7 @@ export async function POST(
       filesChanged = deployFiles.length;
     }
 
-    // Optional Cloudflare Pages deploy via stored API token
+    // Optional Cloudflare Pages deploy via SSO
     let deployUrl: string | null = null;
     let cloudflareProjectName: string | null = project.cloudflareProjectName;
     let domainSetup: {
@@ -159,7 +158,18 @@ export async function POST(
     let hostDeployed = false;
     let hostProvider: HostingProviderId | null = null;
 
-    const hostFiles = deployFiles;
+    const hostFiles = changesDetected
+      ? deployFiles
+      : result.files.concat(
+          result.files.some((f) => f.path === "_redirects")
+            ? []
+            : [
+                {
+                  path: "_redirects",
+                  content: Buffer.from("/*    /index.html   200\n", "utf-8"),
+                },
+              ]
+        );
 
     if (hostTarget !== "none") {
       const auth = await getUserHostingToken(session.user.id, hostTarget);

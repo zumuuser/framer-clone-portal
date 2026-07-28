@@ -9,13 +9,6 @@ export interface ScrapedFile {
   content: Buffer;
 }
 
-export interface ScrapeOptions {
-  /** Rewrite absolute *.framer.website canonicals to this origin (e.g. https://keydispatchers.com). */
-  canonicalOrigin?: string;
-  /** Hard cap on HTML pages scraped (sitemap + link discovery). Default 200. */
-  maxPages?: number;
-}
-
 export interface ScrapeResult {
   files: ScrapedFile[];
   contentHash: string;
@@ -38,11 +31,7 @@ const mimeTypes: Record<string, string> = {
   ".woff2": "font/woff2",
   ".woff": "font/woff",
   ".ttf": "font/ttf",
-  ".txt": "text/plain",
-  ".xml": "application/xml",
 };
-
-const ASSET_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|map|json|mp4|webm|pdf)$/i;
 
 function computeHash(files: ScrapedFile[]): string {
   const hash = createHash("sha256");
@@ -62,6 +51,7 @@ function fixSrcset(html: string): string {
 }
 
 function rewriteHtmlAssets(html: string, baseOrigin: string): string {
+  // Rewrite absolute asset URLs to relative paths
   const assetRe = new RegExp(
     `(["'(])${baseOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/[^"')\\s]+)`,
     "g"
@@ -69,124 +59,11 @@ function rewriteHtmlAssets(html: string, baseOrigin: string): string {
   return html.replace(assetRe, "$1$2");
 }
 
-/** Always emit clean-path.html (never extensionless HTML — Pages serves those as octet-stream). */
-function htmlFileNameForPath(pathname: string): string {
-  const clean = pathname.replace(/\/+$/, "") || "/";
-  if (clean === "/") return "index.html";
-  const stripped = clean.replace(/^\//, "");
-  if (ASSET_EXT.test(stripped) || /\.html?$/i.test(stripped)) return stripped;
-  return `${stripped}.html`;
-}
-
-function normalizePageKey(u: string): string {
-  const p = new URL(u).pathname.replace(/\/+$/, "").replace(/\.+$/, "").toLowerCase();
-  return p === "" ? "/" : p;
-}
-
-function rewriteCanonicals(html: string, pageUrl: string, canonicalOrigin?: string): string {
-  if (!canonicalOrigin) return html;
-  const origin = canonicalOrigin.replace(/\/+$/, "");
-  const path = new URL(pageUrl).pathname.replace(/\/+$/, "") || "/";
-  const canonicalHref = path === "/" ? `${origin}/` : `${origin}${path}`;
-
-  if (/rel=["']canonical["']/i.test(html)) {
-    return html.replace(
-      /<link[^>]*rel=["']canonical["'][^>]*>/gi,
-      `<link rel="canonical" href="${canonicalHref}">`
-    );
-  }
-  return html.replace(
-    /<\/head>/i,
-    `<link rel="canonical" href="${canonicalHref}"></head>`
-  );
-}
-
-function buildRobotsTxt(canonicalOrigin: string): string {
-  const origin = canonicalOrigin.replace(/\/+$/, "");
-  return `# Maximum openness — search + AI crawlers welcome.
-User-agent: *
-Allow: /
-
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: GPTBot
-Allow: /
-
-User-agent: OAI-SearchBot
-Allow: /
-
-User-agent: ClaudeBot
-Allow: /
-
-User-agent: PerplexityBot
-Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
-User-agent: Applebot-Extended
-Allow: /
-
-User-agent: CCBot
-Allow: /
-
-User-agent: Meta-ExternalAgent
-Allow: /
-
-Sitemap: ${origin}/sitemap.xml
-`;
-}
-
-function buildSitemapXml(canonicalOrigin: string, pageUrls: string[]): string {
-  const origin = canonicalOrigin.replace(/\/+$/, "");
-  const locs = pageUrls
-    .map((u) => {
-      const path = new URL(u).pathname.replace(/\/+$/, "") || "/";
-      if (path === "/404") return null;
-      const loc = path === "/" ? `${origin}/` : `${origin}${path}`;
-      return `  <url><loc>${loc}</loc></url>`;
-    })
-    .filter(Boolean);
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${locs.join("\n")}
-</urlset>
-`;
-}
-
-function buildHeadersFile(): string {
-  return `# Cloudflare Pages headers — keep HTML/XML/text typed correctly.
-/*
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-
-/robots.txt
-  Content-Type: text/plain; charset=utf-8
-
-/sitemap.xml
-  Content-Type: application/xml; charset=utf-8
-
-/*.html
-  Content-Type: text/html; charset=utf-8
-`;
-}
-
-function buildRedirectsFile(): string {
-  // Intentionally NO /* → /index.html 200 SPA fallback (that causes soft-404s).
-  // Cloudflare Pages serves 404.html automatically for missing paths when present.
-  return `# Static site — missing paths must 404 (not soft-200 to homepage).
-# Pretty URLs: Pages maps /pricing → /pricing.html automatically.
-`;
-}
-
 async function startLocalServer(siteDir: string, port: number): Promise<ReturnType<typeof createServer>> {
   const server = createServer((req, res) => {
     let rel = decodeURIComponent(req.url || "/").split("?")[0];
     if (rel.endsWith("/")) rel += "index.html";
+    // Try adding .html for clean paths
     let filePath = join(siteDir, rel);
     if (!existsSync(filePath) && !extname(filePath)) {
       const withHtml = filePath + ".html";
@@ -210,42 +87,9 @@ async function startLocalServer(siteDir: string, port: number): Promise<ReturnTy
   });
 }
 
-async function discoverUrlsFromSitemap(
-  page: import("playwright-core").Page,
-  baseOrigin: string
-): Promise<string[]> {
-  const candidates = [`${baseOrigin}/sitemap.xml`, `${baseOrigin}/sitemap_index.xml`];
-  const found: string[] = [];
-  for (const smUrl of candidates) {
-    try {
-      const res = await page.request.get(smUrl, { timeout: 10000 });
-      if (!res.ok()) continue;
-      const text = await res.text();
-      if (!text.includes("<loc>")) continue;
-      const locs = [...text.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].map((m) => m[1].trim());
-      for (const loc of locs) {
-        try {
-          const u = new URL(loc);
-          if (u.origin === baseOrigin) found.push(u.toString());
-        } catch {
-          /* skip */
-        }
-      }
-      if (found.length) break;
-    } catch {
-      /* try next */
-    }
-  }
-  return found;
-}
-
-export async function scrapeFramerSite(
-  domain: string,
-  options: ScrapeOptions = {}
-): Promise<ScrapeResult> {
+export async function scrapeFramerSite(domain: string): Promise<ScrapeResult> {
   const url = domain.startsWith("http") ? domain : `https://${domain}`;
   const baseOrigin = new URL(url).origin;
-  const maxPages = options.maxPages ?? 200;
   const workDir = join("/tmp", `scrape-${Date.now()}`);
   mkdirSync(workDir, { recursive: true });
 
@@ -275,16 +119,13 @@ export async function scrapeFramerSite(
   const page = await context.newPage();
 
   try {
+    // 1. Navigate and wait for full hydration
     await page.goto(url, { waitUntil: "networkidle", timeout: 15000 });
     await page.waitForTimeout(1500);
 
+    // 2. Discover all pages
     const discoveredUrls = new Set<string>();
     discoveredUrls.add(url);
-
-    // Prefer Framer's sitemap — captures full CMS/blog set that homepage links miss.
-    for (const smUrl of await discoverUrlsFromSitemap(page, baseOrigin)) {
-      discoveredUrls.add(smUrl);
-    }
 
     const links = await page.evaluate((baseDomain: string) => {
       const hrefs: string[] = [];
@@ -304,10 +145,16 @@ export async function scrapeFramerSite(
       discoveredUrls.add(new URL(pathname, url).toString());
     }
 
+    // 3. Scrape each page (deduped, parallel tabs to stay within serverless timeouts)
     const pageFiles: ScrapedFile[] = [];
     const assetUrls = new Set<string>();
-    const scrapedPageUrls: string[] = [];
+    const assetPathMap = new Map<string, string>(); // url -> local path
 
+    // Normalize + dedupe URLs ("/about", "/about/", "/about." are the same page)
+    const normalizePageKey = (u: string) => {
+      const p = new URL(u).pathname.replace(/\/+$/, "").replace(/\.+$/, "").toLowerCase();
+      return p === "" ? "/" : p;
+    };
     const seenKeys = new Set<string>();
     const urlsToScrape: string[] = [];
     for (const u of discoveredUrls) {
@@ -316,24 +163,23 @@ export async function scrapeFramerSite(
       seenKeys.add(key);
       urlsToScrape.push(u);
     }
-    const queue = urlsToScrape.slice(0, maxPages);
-    if (urlsToScrape.length > maxPages) {
-      console.warn(
-        `Page discovery found ${urlsToScrape.length} URLs; scraping first ${maxPages}. Raise maxPages if needed.`
-      );
-    }
+    const MAX_PAGES = 25;
+    const queue = urlsToScrape.slice(0, MAX_PAGES);
 
-    const scrapeOne = async (tab: import("playwright-core").Page, pageUrl: string) => {
-      await tab.goto(pageUrl, { waitUntil: "networkidle", timeout: 15000 });
-      await tab.waitForTimeout(1000);
+    const scrapeOne = async (page: import("playwright-core").Page, pageUrl: string) => {
+      await page.goto(pageUrl, { waitUntil: "networkidle", timeout: 15000 });
+      await page.waitForTimeout(1000);
 
-      const fileName = htmlFileNameForPath(new URL(pageUrl).pathname);
+      const pathname = new URL(pageUrl).pathname;
+      const fileName = pathname === "/"
+        ? "index.html"
+        : pathname.replace(/^\//, "").replace(/\/$/, "") + (pathname.includes(".") ? "" : ".html");
 
-      let html = await tab.content();
+      let html = await page.content();
       html = fixSrcset(html);
-      html = rewriteCanonicals(html, pageUrl, options.canonicalOrigin);
 
-      const pageAssets = await tab.evaluate(() => {
+      // Extract asset URLs
+      const pageAssets = await page.evaluate(() => {
         const urls: string[] = [];
         document.querySelectorAll("img[src], img[srcset]").forEach((img) => {
           urls.push((img as HTMLImageElement).src);
@@ -349,6 +195,7 @@ export async function scrapeFramerSite(
           urls.push((s as HTMLScriptElement).src);
         });
         document.querySelectorAll("link[href]").forEach((l) => {
+          // Only real assets — skip prefetch/canonical/preconnect page links
           const href = (l as HTMLLinkElement).href;
           try {
             if (/\.[a-z0-9]+$/i.test(new URL(href).pathname)) urls.push(href);
@@ -376,17 +223,18 @@ export async function scrapeFramerSite(
           const u = new URL(assetUrl);
           if (u.origin === baseOrigin && /\.[a-z0-9]+$/i.test(u.pathname)) {
             assetUrls.add(assetUrl);
+            assetPathMap.set(assetUrl, u.pathname.replace(/^\//, ""));
           }
         } catch {}
       }
 
+      // Rewrite HTML to use relative asset paths
       html = rewriteHtmlAssets(html, baseOrigin);
 
       const htmlPath = join(workDir, fileName);
       mkdirSync(dirname(htmlPath), { recursive: true });
       writeFileSync(htmlPath, html, "utf-8");
       pageFiles.push({ path: fileName, content: Buffer.from(html, "utf-8") });
-      scrapedPageUrls.push(pageUrl);
     };
 
     const CONCURRENCY = 4;
@@ -409,6 +257,7 @@ export async function scrapeFramerSite(
       })
     );
 
+    // 4. Download all discovered assets in parallel batches (faster on serverless)
     const assetFiles: ScrapedFile[] = [];
     const assetUrlArray = Array.from(assetUrls);
     const BATCH_SIZE = 10;
@@ -441,27 +290,10 @@ export async function scrapeFramerSite(
 
     await browser.close();
 
-    const seoOrigin = options.canonicalOrigin || baseOrigin;
-    const seoFiles: ScrapedFile[] = [
-      {
-        path: "robots.txt",
-        content: Buffer.from(buildRobotsTxt(seoOrigin), "utf-8"),
-      },
-      {
-        path: "sitemap.xml",
-        content: Buffer.from(buildSitemapXml(seoOrigin, scrapedPageUrls), "utf-8"),
-      },
-      {
-        path: "_headers",
-        content: Buffer.from(buildHeadersFile(), "utf-8"),
-      },
-      {
-        path: "_redirects",
-        content: Buffer.from(buildRedirectsFile(), "utf-8"),
-      },
-    ];
+    // 5. Build final file list
+    const allFiles: ScrapedFile[] = [...pageFiles, ...assetFiles];
 
-    const allFiles: ScrapedFile[] = [...pageFiles, ...assetFiles, ...seoFiles];
+    // 6. Cleanup temp dir
     rmSync(workDir, { recursive: true, force: true });
 
     return {
@@ -469,13 +301,8 @@ export async function scrapeFramerSite(
       contentHash: computeHash(allFiles),
     };
   } catch (err) {
-    try {
-      await browser.close();
-    } catch {}
+    try { await browser.close(); } catch {}
     rmSync(workDir, { recursive: true, force: true });
     throw err;
   }
 }
-
-// Keep local preview helper available for tests / future use
-export { startLocalServer };
